@@ -245,7 +245,9 @@ def test_sync_updates_changed_files_and_forgets_deleted_ones(kb, tmp_path):
     ikinci = kb.index_path(tmp_path, silinenleri_unut=True)
 
     assert ikinci.guncellenen == 1 and ikinci.silinen == 1
-    assert kb.search("benzersizsilinen") == []
+    # Anlamsal arama ilgisiz bir belgeyi düşük puanla yine de döndürebilir;
+    # asıl sözleşme silinen kaynağın indekste artık bulunmamasıdır.
+    assert all(hit.yol != str(silinen) for hit in kb.search("benzersizsilinen"))
     assert kb.search("yeni içerik")
 
 

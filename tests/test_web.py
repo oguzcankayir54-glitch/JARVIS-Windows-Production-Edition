@@ -176,12 +176,12 @@ def test_events_stream_replays_state_and_meta(server):
     assert {"state", "meta"} <= set(seen), f"beklenen olaylar gelmedi: {seen}"
 
 
-def test_meta_reports_unimplemented_modules_as_false(server):
+def test_meta_reports_only_truly_unimplemented_modules_as_false(server):
     """The panel must be told what does not exist, so it shows no invented data."""
     meta = server._meta()
     assert meta["rag"] is False
     assert meta["vision"] is False
-    assert meta["diagnostic_engine"] is False
+    assert meta["diagnostic_engine"] is True
     assert meta["tools"] > 0
 
 
@@ -735,6 +735,39 @@ def test_the_diagnostic_tab_counts_real_cases():
     teshis = PanelServer(agent, host="127.0.0.1", port=0).modul_verisi()["teshis"]
     assert teshis["durum"] == "hazir"
     assert "1 açık vaka" in teshis["ozet"]
+    assert {p["id"] for p in teshis["playbooklar"]} >= {"guc-yok", "goruntu-yok"}
+
+
+def test_guided_diagnostic_api_updates_the_case(server):
+    case = server.agent.cases.open_case("Deniz", "Masaüstü", "güç yok")
+    status, started = _post(server, "/teshis/baslat", {
+        "vaka_no": case.id, "playbook": "guc-yok"})
+    assert status == 200 and started["durum"] == "aktif"
+    status, done = _post(server, "/teshis/yanit", {
+        "oturum_no": started["oturum_no"], "secenek": "hayir"})
+    assert status == 200 and done["durum"] == "tamamlandi"
+    notes = server.agent.cases.notes_for(case.id)
+    assert notes[-1].kind == "sonuc" and done["sonuc"] in notes[-1].text
+
+
+def test_guided_diagnostic_rejects_unknown_case_and_option(server):
+    with pytest.raises(urllib.error.HTTPError) as missing:
+        _post(server, "/teshis/baslat", {"vaka_no": 999, "playbook": "guc-yok"})
+    assert missing.value.code == 400
+    case = server.agent.cases.open_case("Deniz", "Laptop", "görüntü yok")
+    _, started = _post(server, "/teshis/baslat", {
+        "vaka_no": case.id, "playbook": "goruntu-yok"})
+    with pytest.raises(urllib.error.HTTPError) as invalid:
+        _post(server, "/teshis/yanit", {
+            "oturum_no": started["oturum_no"], "secenek": "uydurma"})
+    assert invalid.value.code == 400
+
+
+def test_panel_contains_guided_diagnostic_controls(server):
+    _, html = _get(server, "/")
+    assert 'arac.id="teshisForm"' in html
+    assert 'fetch("/teshis/baslat"' in html
+    assert 'fetch("/teshis/yanit"' in html
 
 
 def test_a_broken_store_costs_its_own_tab_not_the_panel(server):

@@ -43,6 +43,7 @@ from ..security.permissions import RiskLevel
 from ..vision.detect import MAX_FRAME_BYTES, VisionError, build_vision
 from ..core.command_guide import panel_rows
 from ..core.custom_commands import CustomCommandStore
+from ..diagnostics import DiagnosticEngine, DiagnosticError
 from ..vision.objects import build_object_vision
 from ..vision.ocr import build_ocr
 from ..vision.identity import build_face_recognizer
@@ -222,6 +223,7 @@ class PanelServer:
         trace_path = getattr(agent.trace_log, "path", None)
         custom_path = trace_path.parent / "custom_commands.json" if trace_path else None
         self.custom_commands = custom_commands or CustomCommandStore(custom_path)
+        self.diagnostics = DiagnosticEngine(agent.cases) if agent.cases is not None else None
         self.hub = EventHub()
         self._agent_lock = threading.Lock()
         self._speech: dict[str, str] = {}
@@ -294,9 +296,9 @@ class PanelServer:
             "ocr": self.ocr.available,
             "face_recognition": self.face_recognizer.available,
             **self._rag_meta(),
-            # Not implemented yet — the panel marks these instead of faking them.
+            # Vision understanding is still staged; guided diagnostics is live.
             "vision": False,
-            "diagnostic_engine": False,
+            "diagnostic_engine": self.diagnostics is not None,
         }
 
     def _rag_meta(self) -> dict[str, Any]:
@@ -353,6 +355,20 @@ class PanelServer:
                 for h in hitler
             ],
         }
+
+    def teshis_baslat(self, vaka_no: int, playbook: str) -> dict[str, Any]:
+        if self.diagnostics is None:
+            raise DiagnosticError("Teşhis motoru bağlı değil.")
+        result = self.diagnostics.start(int(vaka_no), playbook)
+        self.hub.publish("diagnostic", result, retain=False)
+        return result
+
+    def teshis_yanitla(self, oturum_no: int, secenek: str) -> dict[str, Any]:
+        if self.diagnostics is None:
+            raise DiagnosticError("Teşhis motoru bağlı değil.")
+        result = self.diagnostics.answer(int(oturum_no), secenek)
+        self.hub.publish("diagnostic", result, retain=False)
+        return result
 
     def _rag_sync_loop(self) -> None:
         """Synchronise explicitly configured roots until the panel stops."""
@@ -435,6 +451,8 @@ class PanelServer:
                                "deger": f"{v.device} · {v.status}",
                                "aciklama": v.symptom}
                              for v in acik],
+                "playbooklar": self.diagnostics.list_playbooks()
+                if self.diagnostics is not None else [],
             }
 
         def bilgi() -> dict[str, Any]:
@@ -832,6 +850,10 @@ def _make_handler(server: PanelServer):
                 return self._handle_custom_command(delete=True)
             if path == "/komut-analiz":
                 return self._handle_command_analysis()
+            if path == "/teshis/baslat":
+                return self._handle_diagnostic(start=True)
+            if path == "/teshis/yanit":
+                return self._handle_diagnostic(start=False)
             if path != "/ask":
                 return self._json(404, {"error": "bulunamadı"})
             try:
@@ -907,6 +929,25 @@ def _make_handler(server: PanelServer):
                 return self._json(400, {"error": str(exc)})
             except Exception as exc:
                 return self._json(500, {"error": f"Bilgi tabanı okunamadı: {exc}"})
+
+        def _handle_diagnostic(self, *, start: bool) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    return self._json(400 if length <= 0 else 413,
+                                      {"error": "geçersiz istek boyutu"})
+                payload = json.loads(self.rfile.read(length))
+                if start:
+                    result = server.teshis_baslat(
+                        int(payload.get("vaka_no", 0)), str(payload.get("playbook", "")))
+                else:
+                    result = server.teshis_yanitla(
+                        int(payload.get("oturum_no", 0)), str(payload.get("secenek", "")))
+                return self._json(200, result)
+            except (ValueError, TypeError, json.JSONDecodeError, DiagnosticError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception as exc:
+                return self._json(500, {"error": f"Teşhis işlemi başarısız: {exc}"})
 
         def _handle_listen(self) -> None:
             """Transcribe the posted recording locally and return the text."""

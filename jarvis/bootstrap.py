@@ -22,6 +22,8 @@ from .core.kimlik_tohumu import kimligi_tohumla
 from .security.permissions import Approver, PermissionManager
 from .tools.base import ToolRegistry
 from .tools.case_tools import register_case_tools
+from .tools.diagnostic_tools import register_diagnostic_tools
+from .diagnostics import DiagnosticEngine
 from .tools.file_tools import register_file_tools
 from .tools.git_tools import register_git_tools
 from .tools.manager import ToolManager
@@ -127,6 +129,7 @@ def build_agent(
     register_git_tools(registry)
     register_shell_tools(registry)
     register_case_tools(registry, case_store)
+    register_diagnostic_tools(registry, DiagnosticEngine(case_store))
     register_rag_tools(registry, kb)
     register_web_tools(registry, build_arama(
         enabled=cfg.web_enabled, brave_key=cfg.brave_api_key))

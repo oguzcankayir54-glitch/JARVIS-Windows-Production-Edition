@@ -118,7 +118,7 @@ ollama pull bge-m3
 
 ### Kurulum adımları
 
-1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.2/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
+1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.3/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
 2. Dosyaya çift tıklayıp kurulum sihirbazını tamamlayın.
 3. Kaynak kurulum seçeneği için `INDIRME.md` belgesine bakın.
 4. Kurucu projeyi `%LOCALAPPDATA%\Programs\JARVIS` altına kurar.
@@ -260,7 +260,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - Hazır Setup EXE GitHub Releases üzerinden yayınlanmaktadır; paket henüz kod imzalı değildir
 - iPhone istemcisi ve telefon mikrofonu için HTTPS akışı tamamlanmamıştır
 - Ayrı müşteri bilgisayarına bağlanan uzak teşhis ajanı henüz yoktur
-- Teşhis playbook/karar ağacı geliştirmesi devam etmektedir
+- Yönlendirmeli teşhis playbook'ları hazırdır; kart düzeyi özel playbook kapsamı genişletilmektedir
 - Watchdog, doğrulanmış yedekleme/geri yükleme ve log rotation hazırdır
 - Windows SmartScreen için kod imzalama yapılmamıştır
 
@@ -273,7 +273,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - ✅ ElevenLabs, Edge, Piper ve faster-whisper entegrasyonları
 - ✅ Yerel kamera, yüz, nesne ve OCR altyapısı
 - 🔸 Temiz Windows donanım kabul testleri
-- 🔸 Teşhis playbook ve karar ağacı
+- ✅ Vaka bağlantılı teşhis playbook'ları ve karar ağacı
 - ✅ RAG panel yönetimi ve otomatik yeniden indeksleme
 - ✅ Yedekleme, geri yükleme, log rotation ve Windows watchdog
 - 🔸 HTTPS üzerinden telefon/iPhone istemcisi
@@ -291,7 +291,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 4. ✅ **Faz 3** — RAG: hibrit arama (anlam + kelime) · `jarvis-bilgi` ·
    panelden kaynaklı arama · seçili klasörleri otomatik eşitleme
    (`docs/BILGI-TABANI.md`)
-5. 🔸 **Faz 4** — Diagnostic Brain: vaka kaydı ✅ · geçmiş arama ✅ · karar ağacı, playbook sırada
+5. ✅ **Faz 4** — Diagnostic Brain: vaka kaydı · geçmiş arama · yönlendirmeli karar ağacı
 6. **Faz 5** — iPhone istemci · 🔸 **Faz 6** — Vision: hedef takibi ✅ ·
     yüz tanıma, karşılama, nesne tanıma sırada (`docs/KAMERA.md`) ·
     **Faz 7** — Proaktif + Ajanda
@@ -307,6 +307,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - [Model karşılaştırma](docs/MODEL-KARSILASTIRMA.md)
 - [Gereksinim ve risk analizi](docs/REQUIREMENTS_ANALYSIS.md)
 - [Yedekleme ve watchdog](docs/YEDEKLEME-VE-WATCHDOG.md)
+- [Diagnostic Brain](docs/TESHIS.md)
 
 ## Kurulum yolları
 

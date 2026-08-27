@@ -72,6 +72,18 @@ class Case:
         return parca if self.status == ACIK else f"{parca} [{self.status}]"
 
 
+@dataclass
+class DiagnosticSession:
+    id: int
+    case_id: int
+    playbook: str
+    current_node: str
+    status: str
+    summary: str
+    started_ts: float
+    updated_ts: float
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cases (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +106,19 @@ CREATE TABLE IF NOT EXISTS case_notes (
     ts      REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_notes_case ON case_notes(case_id, id);
+
+CREATE TABLE IF NOT EXISTS diagnostic_sessions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id      INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    playbook     TEXT NOT NULL,
+    current_node TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'aktif',
+    summary      TEXT NOT NULL DEFAULT '',
+    started_ts   REAL NOT NULL,
+    updated_ts   REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_case
+    ON diagnostic_sessions(case_id, status, id);
 """
 
 
@@ -185,6 +210,34 @@ class CaseStore:
         self._conn.commit()
         return self.get_case(case_id)   # type: ignore[return-value]
 
+    def start_diagnostic(self, case_id: int, playbook: str,
+                         first_node: str) -> DiagnosticSession:
+        if self.get_case(case_id) is None:
+            raise CaseError(f"#{case_id} numaralı vaka yok.")
+        now = time.time()
+        cur = self._conn.execute(
+            "INSERT INTO diagnostic_sessions "
+            "(case_id, playbook, current_node, status, started_ts, updated_ts) "
+            "VALUES (?, ?, ?, 'aktif', ?, ?)",
+            (case_id, playbook, first_node, now, now),
+        )
+        self._conn.commit()
+        return self.get_diagnostic(cur.lastrowid)  # type: ignore[return-value]
+
+    def update_diagnostic(self, session_id: int, *, current_node: str,
+                          status: str = "aktif", summary: str = "") -> DiagnosticSession:
+        if status not in ("aktif", "tamamlandi"):
+            raise CaseError("Teşhis oturumu durumu geçersiz.")
+        if self.get_diagnostic(session_id) is None:
+            raise CaseError(f"#{session_id} numaralı teşhis oturumu yok.")
+        self._conn.execute(
+            "UPDATE diagnostic_sessions SET current_node = ?, status = ?, "
+            "summary = ?, updated_ts = ? WHERE id = ?",
+            (current_node, status, summary.strip(), time.time(), session_id),
+        )
+        self._conn.commit()
+        return self.get_diagnostic(session_id)  # type: ignore[return-value]
+
     # ---------------- reading ----------------
 
     def get_case(self, case_id: int, with_notes: bool = False) -> Case | None:
@@ -202,6 +255,27 @@ class CaseStore:
         ).fetchall()
         return [CaseNote(id=r["id"], case_id=r["case_id"], text=r["text"],
                          kind=r["kind"], ts=r["ts"]) for r in rows]
+
+    def get_diagnostic(self, session_id: int) -> DiagnosticSession | None:
+        row = self._conn.execute(
+            "SELECT * FROM diagnostic_sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return DiagnosticSession(
+            id=row["id"], case_id=row["case_id"], playbook=row["playbook"],
+            current_node=row["current_node"], status=row["status"],
+            summary=row["summary"], started_ts=row["started_ts"],
+            updated_ts=row["updated_ts"],
+        )
+
+    def diagnostics_for(self, case_id: int) -> list[DiagnosticSession]:
+        rows = self._conn.execute(
+            "SELECT id FROM diagnostic_sessions WHERE case_id = ? ORDER BY id DESC",
+            (case_id,),
+        ).fetchall()
+        return [session for row in rows
+                if (session := self.get_diagnostic(row["id"])) is not None]
 
     def open_cases(self, limit: int = 30) -> list[Case]:
         """Cases still on the bench — oldest first, because those are the ones

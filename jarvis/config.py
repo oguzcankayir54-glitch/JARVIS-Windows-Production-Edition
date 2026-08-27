@@ -217,6 +217,8 @@ class Config:
         default_factory=lambda: _paths("JARVIS_RAG_AUTO_PATHS"))
     rag_sync_interval: float = field(
         default_factory=lambda: max(10.0, _float("JARVIS_RAG_SYNC_INTERVAL", 60.0)))
+    reminder_interval: float = field(
+        default_factory=lambda: max(5.0, _float("JARVIS_REMINDER_INTERVAL", 30.0)))
 
     # --- camera (local vision) ---
     # Off by default: a camera in a workshop sees customers and couriers, and

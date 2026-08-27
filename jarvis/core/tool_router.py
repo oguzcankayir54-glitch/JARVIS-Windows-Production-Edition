@@ -47,7 +47,7 @@ class ToolRouter:
             "windows_window", "windows_audio", "windows_input",
         }),
         Intent.SYSTEM_MONITOR: SYSTEM_TOOLS,
-        Intent.TASK: frozenset(),
+        Intent.TASK: frozenset({"ajanda_ekle", "ajanda_listele", "ajanda_durum"}),
         Intent.AUTONOMOUS: frozenset(),
         Intent.VOICE: frozenset(),
         Intent.UNKNOWN: frozenset(),

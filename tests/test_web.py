@@ -621,9 +621,10 @@ def test_the_tools_tab_lists_real_tools_with_their_risk(server):
     assert all(s["deger"] for s in araclar["satirlar"]), "risk etiketi eksik"
 
 
-def test_an_unimplemented_module_says_so_instead_of_inventing(server):
+def test_agenda_module_is_empty_instead_of_inventing_data(server):
     ajanda = server.modul_verisi()["ajanda"]
-    assert ajanda["durum"] == "yok"
+    assert ajanda["durum"] == "bos"
+    assert ajanda["satirlar"] == []
     assert "henüz" in ajanda["ozet"]
 
 

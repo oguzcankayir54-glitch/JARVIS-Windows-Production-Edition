@@ -118,7 +118,7 @@ ollama pull bge-m3
 
 ### Kurulum adımları
 
-1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.3/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
+1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.4/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
 2. Dosyaya çift tıklayıp kurulum sihirbazını tamamlayın.
 3. Kaynak kurulum seçeneği için `INDIRME.md` belgesine bakın.
 4. Kurucu projeyi `%LOCALAPPDATA%\Programs\JARVIS` altına kurar.
@@ -278,7 +278,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - ✅ Yedekleme, geri yükleme, log rotation ve Windows watchdog
 - 🔸 HTTPS üzerinden telefon/iPhone istemcisi
 - 🔸 Uzak hedef makine teşhis ajanı
-- 🔸 Proaktif bildirim ve ajanda
+- ✅ Kalıcı ajanda, yaklaşan vaka uyarıları ve Windows yerel bildirimleri
 
 ## Belgeler
 
@@ -294,7 +294,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 5. ✅ **Faz 4** — Diagnostic Brain: vaka kaydı · geçmiş arama · yönlendirmeli karar ağacı
 6. **Faz 5** — iPhone istemci · 🔸 **Faz 6** — Vision: hedef takibi ✅ ·
     yüz tanıma, karşılama, nesne tanıma sırada (`docs/KAMERA.md`) ·
-    **Faz 7** — Proaktif + Ajanda
+    **Faz 7** — Proaktif + Ajanda ✅
 
 ## Belgeler
 
@@ -308,6 +308,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - [Gereksinim ve risk analizi](docs/REQUIREMENTS_ANALYSIS.md)
 - [Yedekleme ve watchdog](docs/YEDEKLEME-VE-WATCHDOG.md)
 - [Diagnostic Brain](docs/TESHIS.md)
+- [Ajanda ve yerel bildirimler](docs/AJANDA.md)
 
 ## Kurulum yolları
 

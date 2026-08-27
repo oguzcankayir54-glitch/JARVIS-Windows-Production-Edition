@@ -58,6 +58,7 @@ ANAHTARLAR: dict[str, tuple[str, ...]] = {
     "git": ("git", "github", "commit", "branch", "dal", "remote", "diff"),
     "uygulama": ("ac", "baslat", "calistir", "youtube", "tarayici", "program",
                  "uygulama", "ayarlar", "not defteri", "hesap makinesi"),
+    "ajanda": ("ajanda", "gorev", "randevu", "teslim", "hatirlat", "yapilacak"),
 }
 
 #: Araç adı → kategori. Kayıt defterindeki adlarla birebir.
@@ -103,6 +104,9 @@ KATEGORILER: dict[str, str] = {
     "arama_ac": "uygulama",
     "uygulama_ac": "uygulama",
     "uygulama_listesi": "uygulama",
+    "ajanda_ekle": "ajanda",
+    "ajanda_listele": "ajanda",
+    "ajanda_durum": "ajanda",
 }
 
 #: Hiçbir kategori tutmadığında gönderilenler.

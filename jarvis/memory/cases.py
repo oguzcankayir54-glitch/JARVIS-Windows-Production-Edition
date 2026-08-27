@@ -286,6 +286,15 @@ class CaseStore:
         ).fetchall()
         return [self._row_to_case(r) for r in rows]
 
+    def promised_cases(self, until_ts: float, limit: int = 50) -> list[Case]:
+        """Açık/bekleyen ve teslim sözü yaklaşan vakalar, en acili önce."""
+        rows = self._conn.execute(
+            "SELECT * FROM cases WHERE status IN (?, ?) AND promised_ts IS NOT NULL "
+            "AND promised_ts <= ? ORDER BY promised_ts LIMIT ?",
+            (ACIK, BEKLIYOR, float(until_ts), int(limit)),
+        ).fetchall()
+        return [self._row_to_case(r) for r in rows]
+
     def search(self, query: str, limit: int = 6) -> list[tuple[Case, int]]:
         """Past cases whose text overlaps ``query``, best match first.
 

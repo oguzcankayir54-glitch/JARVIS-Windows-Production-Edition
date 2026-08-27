@@ -57,6 +57,8 @@ from ..tools.system_tools import (
     get_ram_usage,
     get_system_info,
 )
+from ..agenda.notifier import ReminderService
+from ..agenda.store import AgendaError
 
 PANEL_HTML = Path(__file__).resolve().parents[2] / "docs" / "mockups" / "jarvis-panel.html"
 #: Uygulama penceresinin baslik cubugundaki ve gorev cubugundaki simge
@@ -197,7 +199,7 @@ class PanelServer:
                  custom_commands: CustomCommandStore | None = None,
                  sesli_onay_tabani: RiskLevel = RiskLevel.MEDIUM,
                  rag_auto_paths=(), rag_sync_interval: float = 60.0,
-                 llm_uyari: str = "") -> None:
+                 llm_uyari: str = "", reminder_interval: float = 30.0) -> None:
         self.agent = agent
         self.host = host
         self.port = port
@@ -224,6 +226,9 @@ class PanelServer:
         custom_path = trace_path.parent / "custom_commands.json" if trace_path else None
         self.custom_commands = custom_commands or CustomCommandStore(custom_path)
         self.diagnostics = DiagnosticEngine(agent.cases) if agent.cases is not None else None
+        self.agenda = getattr(agent, "agenda", None)
+        self.reminders = ReminderService(self.agenda, agent.cases) if self.agenda else None
+        self.reminder_interval = max(1.0, float(reminder_interval))
         self.hub = EventHub()
         self._agent_lock = threading.Lock()
         self._speech: dict[str, str] = {}
@@ -557,6 +562,23 @@ class PanelServer:
                     "ozet": "dikkat gerekli" if kritik else "temel kontroller normal",
                     "satirlar": satirlar}
 
+        def ajanda() -> dict[str, Any]:
+            if self.agenda is None:
+                return {"durum": "yok", "ozet": "ajanda bağlı değil", "satirlar": []}
+            now = time.time()
+            items = self.agenda.list("acik")
+            promised = self.agent.cases.promised_cases(now + 86400) if self.agent.cases else []
+            rows = [{"ad": f"#{x.id} {x.title}", "deger": x.kind,
+                     "aciklama": time.strftime("%d.%m.%Y %H:%M", time.localtime(x.due_ts)),
+                     "kayit_no": x.id, "gecikti": x.due_ts < now} for x in items]
+            rows += [{"ad": f"Vaka #{x.id} · {x.customer}", "deger": "teslim",
+                      "aciklama": time.strftime("%d.%m.%Y %H:%M", time.localtime(x.promised_ts))}
+                     for x in promised]
+            overdue = sum(x.due_ts < now for x in items)
+            return {"durum": "uyari" if overdue else ("hazir" if rows else "bos"),
+                    "ozet": f"{len(rows)} açık · {overdue} geciken" if rows else "henüz kayıt yok",
+                    "satirlar": rows}
+
         return {
             "sistem": guvenli(sistem, {"durum": "yok", "ozet": "", "satirlar": []}),
             "ses": guvenli(ses, {"durum": "yok", "ozet": "", "satirlar": []}),
@@ -568,11 +590,7 @@ class PanelServer:
             "komutlar": guvenli(komutlar, {"durum": "yok", "ozet": "", "satirlar": []}),
             "kayitlar": guvenli(kayitlar, {"durum": "yok", "ozet": "log okunamadı", "satirlar": []}),
             "saglik": guvenli(saglik, {"durum": "yok", "ozet": "sağlık ölçülemedi", "satirlar": []}),
-            # Henüz yok. Uydurma veri yerine açıkça söylüyoruz.
-            "ajanda": {"durum": "yok",
-                       "ozet": "bu modül henüz yapılmadı",
-                       "satirlar": [{"ad": "Planlanan",
-                                     "deger": "randevu ve teslim tarihleri"}]},
+            "ajanda": guvenli(ajanda, {"durum": "yok", "ozet": "ajanda okunamadı", "satirlar": []}),
         }
 
     # ---------------- agent plumbing ----------------
@@ -708,6 +726,15 @@ class PanelServer:
                 pass  # a telemetry hiccup must never kill the server
             self._stop.wait(TELEMETRY_PERIOD_S)
 
+    def _reminder_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                for event in self.reminders.run_once():
+                    self.hub.publish("agenda", event, retain=False)
+            except Exception:
+                pass
+            self._stop.wait(self.reminder_interval)
+
     # ---------------- lifecycle ----------------
 
     def serve_forever(self) -> None:
@@ -715,6 +742,8 @@ class PanelServer:
         self._httpd = _PanelHTTPServer((self.host, self.port), handler)
         self._httpd.daemon_threads = True
         threading.Thread(target=self._telemetry_loop, daemon=True).start()
+        if self.reminders is not None:
+            threading.Thread(target=self._reminder_loop, daemon=True).start()
         if self.rag_auto_paths:
             threading.Thread(target=self._rag_sync_loop, daemon=True).start()
         try:
@@ -854,6 +883,10 @@ def _make_handler(server: PanelServer):
                 return self._handle_diagnostic(start=True)
             if path == "/teshis/yanit":
                 return self._handle_diagnostic(start=False)
+            if path == "/ajanda/ekle":
+                return self._handle_agenda("ekle")
+            if path == "/ajanda/durum":
+                return self._handle_agenda("durum")
             if path != "/ask":
                 return self._json(404, {"error": "bulunamadı"})
             try:
@@ -948,6 +981,26 @@ def _make_handler(server: PanelServer):
                 return self._json(400, {"error": str(exc)})
             except Exception as exc:
                 return self._json(500, {"error": f"Teşhis işlemi başarısız: {exc}"})
+
+        def _handle_agenda(self, action: str) -> None:
+            if server.agenda is None:
+                return self._json(503, {"error": "ajanda bağlı değil"})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 8192:
+                    return self._json(400 if length <= 0 else 413, {"error": "geçersiz istek boyutu"})
+                p = json.loads(self.rfile.read(length))
+                if action == "ekle":
+                    item = server.agenda.create(str(p.get("baslik", "")), str(p.get("tur", "")),
+                        p.get("son_tarih", ""), p.get("hatirlatma"), str(p.get("notlar", "")),
+                        p.get("vaka_no"))
+                else:
+                    item = server.agenda.set_status(int(p.get("kayit_no", 0)),
+                                                    str(p.get("durum", "")))
+                server.hub.publish("agenda", {"action": action, "item": item.as_dict()}, retain=False)
+                return self._json(200, {"ok": True, "kayit": item.as_dict()})
+            except (AgendaError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                return self._json(400, {"error": str(exc)})
 
         def _handle_listen(self) -> None:
             """Transcribe the posted recording locally and return the text."""

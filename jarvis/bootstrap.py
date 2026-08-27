@@ -34,6 +34,8 @@ from .tools.web_tools import register_web_tools
 from .tools.shell_tools import register_shell_tools
 from .tools.system_tools import get_gpu_temperature, get_system_info, register_system_tools
 from .tools.windows_tools import register_windows_tools
+from .tools.agenda_tools import register_agenda_tools
+from .agenda.store import AgendaStore
 
 
 def build_llm(cfg: Config) -> LLMProvider:
@@ -109,6 +111,7 @@ def build_agent(
     # Following the store's path rather than the config keeps an in-memory
     # memory store from quietly dragging a real file onto disk beside it.
     case_store = cases if cases is not None else CaseStore(store.db_path)
+    agenda_store = AgendaStore(store.db_path, cases=case_store)
 
     # The knowledge base is the one store that is rebuildable, so it gets its
     # own file: deleting and re-indexing must never put memory at risk.
@@ -130,6 +133,7 @@ def build_agent(
     register_shell_tools(registry)
     register_case_tools(registry, case_store)
     register_diagnostic_tools(registry, DiagnosticEngine(case_store))
+    register_agenda_tools(registry, agenda_store)
     register_rag_tools(registry, kb)
     register_web_tools(registry, build_arama(
         enabled=cfg.web_enabled, brave_key=cfg.brave_api_key))
@@ -143,6 +147,6 @@ def build_agent(
         history_max_messages=cfg.history_max_messages,
         context_max_chars=cfg.context_max_chars,
         tool_result_max_chars=cfg.tool_result_max_chars,
-        asistan=asistan_bul(), memory=store, cases=case_store, knowledge=kb,
+        asistan=asistan_bul(), memory=store, cases=case_store, agenda=agenda_store, knowledge=kb,
         machine=describe_machine(), trace_log=trace_log,
     )

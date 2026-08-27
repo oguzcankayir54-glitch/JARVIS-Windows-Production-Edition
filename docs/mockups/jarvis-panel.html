@@ -734,6 +734,17 @@
         baslat.disabled=true;try{const r=await fetch("/teshis/baslat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({vaka_no:no,playbook:sec.value})});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);ciz(d)}catch(e){addNotice("Teşhis başlatılamadı: "+e.message)}finally{baslat.disabled=false}};
       arac.append(vaka,sec,baslat); govde.append(arac,akis);
     }
+    if(anahtar === "ajanda"){
+      const arac=document.createElement("div"); arac.className="cmd-tools";
+      const baslik=document.createElement("input"); baslik.placeholder="Başlık";
+      const tur=document.createElement("select");
+      [["gorev","Görev"],["randevu","Randevu"],["teslim","Teslim"]].forEach(x=>{const o=document.createElement("option");o.value=x[0];o.textContent=x[1];tur.appendChild(o)});
+      const tarih=document.createElement("input"); tarih.type="datetime-local"; tarih.setAttribute("aria-label","Son tarih");
+      const ekle=document.createElement("button"); ekle.type="button"; ekle.textContent="+ EKLE";
+      ekle.onclick=async()=>{if(!baslik.value.trim()||!tarih.value){addNotice("Başlık ve tarih gerekli.");return;}ekle.disabled=true;
+        try{const r=await fetch("/ajanda/ekle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({baslik:baslik.value,tur:tur.value,son_tarih:tarih.value})});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);addNotice("Ajanda kaydı eklendi.");await modulleriYenile()}catch(e){addNotice("Ajanda kaydı eklenemedi: "+e.message)}finally{ekle.disabled=false}};
+      arac.append(baslik,tur,tarih,ekle); govde.appendChild(arac);
+    }
     if(anahtar === "komutlar"){
       const gecmis = yerelListe(GECMIS_ANAHTAR).map(x=>({ad:"Son Kullanılan",deger:x,
         aciklama:"Yakın zamanda çalıştırıldı",komut:x,gecmis:"1"}));
@@ -772,6 +783,11 @@
       v.className = "v"; v.textContent = s.deger; v.title = s.deger;
       satir.append(k, v);
       if(s.aciklama && !s.komut) satir.title=s.aciklama;
+      if(anahtar==="ajanda" && s.kayit_no){
+        const tamam=document.createElement("button"); tamam.type="button"; tamam.className="fav-btn"; tamam.textContent="✓"; tamam.title="Tamamlandı olarak işaretle";
+        tamam.onclick=async()=>{tamam.disabled=true;try{const r=await fetch("/ajanda/durum",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kayit_no:s.kayit_no,durum:"tamamlandi"})});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);await modulleriYenile()}catch(e){addNotice("Ajanda güncellenemedi: "+e.message)}finally{tamam.disabled=false}};
+        satir.appendChild(tamam);
+      }
       if(s.komut){
         satir.classList.add("komut-row");
         satir.title = (s.aciklama || "") + " · Yazı kutusuna almak için tıklayın";

@@ -37,6 +37,7 @@ class Agent:
         max_steps: int = 6,
         memory: MemoryStore | None = None,
         cases: CaseStore | None = None,
+        agenda=None,
         knowledge=None,
         session_id: str | None = None,
         machine: str = "",
@@ -56,6 +57,7 @@ class Agent:
         self.max_steps = max_steps
         self.memory = memory
         self.cases = cases
+        self.agenda = agenda
         self.knowledge = knowledge
         self.session_id = session_id or uuid.uuid4().hex[:12]
         self.owner = memory.get_owner() if memory is not None else None

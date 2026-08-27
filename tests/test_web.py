@@ -10,7 +10,37 @@ import pytest
 from jarvis.bootstrap import build_agent
 from jarvis.config import Config
 from jarvis.memory.store import MemoryStore
-from jarvis.web.server import PanelServer, collect_telemetry
+from jarvis.web.server import PanelServer, _PanelHTTPServer, collect_telemetry
+
+
+def test_ordinary_client_disconnect_is_not_reported(monkeypatch):
+    reported = []
+    monkeypatch.setattr(
+        "http.server.ThreadingHTTPServer.handle_error",
+        lambda self, request, address: reported.append(address),
+    )
+    httpd = object.__new__(_PanelHTTPServer)
+
+    try:
+        raise ConnectionResetError("tarayıcı ayrıldı")
+    except ConnectionResetError:
+        httpd.handle_error(None, ("127.0.0.1", 1234))
+    assert reported == []
+
+
+def test_real_server_error_is_still_reported(monkeypatch):
+    reported = []
+    monkeypatch.setattr(
+        "http.server.ThreadingHTTPServer.handle_error",
+        lambda self, request, address: reported.append(address),
+    )
+    httpd = object.__new__(_PanelHTTPServer)
+
+    try:
+        raise ValueError("gerçek hata")
+    except ValueError:
+        httpd.handle_error(None, ("127.0.0.1", 5678))
+    assert reported == [("127.0.0.1", 5678)]
 
 
 def _hazir_bekle(srv, timeout: float = 5.0) -> None:

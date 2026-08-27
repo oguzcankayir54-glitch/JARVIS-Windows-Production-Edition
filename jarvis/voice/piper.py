@@ -109,26 +109,39 @@ class PiperTTS:
             raise TTSError("Seslendirilecek metin boş.")
         self._denetle()
 
+        # Piper 1.7'nin ``-f -`` yolu boş WAV üretebiliyor. Adlandırılmış
+        # geçici dosya hem eski hem yeni CLI ile çalışır; çıktı daha sonra
+        # panelin beklediği bayt akışına çevrilir.
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as gecici:
+            cikti = Path(gecici.name)
         try:
-            surec = subprocess.Popen(
-                self._komut(),
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-        except OSError as exc:
-            raise TTSError(f"Piper başlatılamadı: {exc}") from exc
+            try:
+                surec = subprocess.Popen(
+                    self._komut(str(cikti)),
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+            except OSError as exc:
+                raise TTSError(f"Piper başlatılamadı: {exc}") from exc
 
-        try:
-            # Metin kucuk (bir cevap), boru tamponuna sigiyor; yazip kapatmak
-            # kilitlenmeye yol acmiyor ve okuma tek yonlu kaliyor.
-            ses, hata = surec.communicate(text.encode("utf-8"),
-                                          timeout=ZAMAN_ASIMI)
-        except subprocess.TimeoutExpired as exc:
-            surec.kill()
-            surec.communicate()
-            raise TTSError(
-                f"Piper {ZAMAN_ASIMI:.0f} saniyede bitiremedi."
-            ) from exc
+            try:
+                # Metin kucuk (bir cevap), boru tamponuna sigiyor; yazip
+                # kapatmak kilitlenmeye yol acmiyor.
+                ses, hata = surec.communicate(text.encode("utf-8"),
+                                              timeout=ZAMAN_ASIMI)
+            except subprocess.TimeoutExpired as exc:
+                surec.kill()
+                surec.communicate()
+                raise TTSError(
+                    f"Piper {ZAMAN_ASIMI:.0f} saniyede bitiremedi."
+                ) from exc
+
+            # Test sağlayıcıları ve eski CLI stdout döndürebilir; yeni CLI
+            # ise adlandırılmış dosyaya yazar.
+            if not ses and cikti.is_file():
+                ses = cikti.read_bytes()
+        finally:
+            cikti.unlink(missing_ok=True)
 
         # piper-tts 1.7.0'ın stdout WAV yolu bazı sistemlerde başarılı kodla
         # fakat sıfır baytla dönüyor. Dosya çıktısı aynı sürümde sağlam;

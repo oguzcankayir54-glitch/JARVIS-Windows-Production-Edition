@@ -24,6 +24,7 @@ from __future__ import annotations
 import hmac
 import json
 import queue
+import sys
 import threading
 import time
 import urllib.parse
@@ -59,6 +60,16 @@ PANEL_HTML = Path(__file__).resolve().parents[2] / "docs" / "mockups" / "jarvis-
 #: Uygulama penceresinin baslik cubugundaki ve gorev cubugundaki simge
 #: buradan geliyor: tarayici sayfanin favicon'unu kullaniyor.
 PANEL_ICO = Path(__file__).resolve().parents[2] / "windows" / "jarvis.ico"
+
+
+class _PanelHTTPServer(ThreadingHTTPServer):
+    """Hide routine browser disconnects without hiding real server errors."""
+
+    def handle_error(self, request, client_address) -> None:
+        error = sys.exc_info()[1]
+        if isinstance(error, (ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
 
 #: How often telemetry is pushed to connected panels.
 TELEMETRY_PERIOD_S = 4.0
@@ -595,7 +606,7 @@ class PanelServer:
 
     def serve_forever(self) -> None:
         handler = _make_handler(self)
-        self._httpd = ThreadingHTTPServer((self.host, self.port), handler)
+        self._httpd = _PanelHTTPServer((self.host, self.port), handler)
         self._httpd.daemon_threads = True
         threading.Thread(target=self._telemetry_loop, daemon=True).start()
         try:

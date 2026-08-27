@@ -40,6 +40,7 @@ from ..core.asistan import asistan_bul
 from ..security.permissions import RiskLevel
 from ..vision.detect import MAX_FRAME_BYTES, VisionError, build_vision
 from ..core.command_guide import panel_rows
+from ..core.custom_commands import CustomCommandStore
 from ..vision.objects import build_object_vision
 from ..vision.ocr import build_ocr
 from ..vision.identity import build_face_recognizer
@@ -174,6 +175,7 @@ class PanelServer:
                  tts=None, token: str | None = None, stt=None, vision=None,
                  object_vision=None, ocr=None,
                  face_recognizer=None,
+                 custom_commands: CustomCommandStore | None = None,
                  sesli_onay_tabani: RiskLevel = RiskLevel.MEDIUM,
                  llm_uyari: str = "") -> None:
         self.agent = agent
@@ -198,6 +200,9 @@ class PanelServer:
         self.sesli_onay_tabani = sesli_onay_tabani
         #: LLM acilista yoklanip buraya yaziliyor; bos ise sorun yok.
         self.llm_uyari = llm_uyari
+        trace_path = getattr(agent.trace_log, "path", None)
+        custom_path = trace_path.parent / "custom_commands.json" if trace_path else None
+        self.custom_commands = custom_commands or CustomCommandStore(custom_path)
         self.hub = EventHub()
         self._agent_lock = threading.Lock()
         self._speech: dict[str, str] = {}
@@ -336,7 +341,9 @@ class PanelServer:
             return {
                 "durum": "hazir" if toplam else "bos",
                 "ozet": f"{toplam} açık vaka" if toplam else "açık vaka yok",
-                "satirlar": [{"ad": f"#{v.id} {v.customer}", "deger": v.device}
+                "satirlar": [{"ad": f"#{v.id} {v.customer}",
+                               "deger": f"{v.device} · {v.status}",
+                               "aciklama": v.symptom}
                              for v in acik],
             }
 
@@ -393,12 +400,45 @@ class PanelServer:
                     ]}
 
         def komutlar() -> dict[str, Any]:
-            satirlar = panel_rows()
+            satirlar = panel_rows() + [
+                {"ad": "Kişisel", "deger": item.phrase,
+                 "aciklama": f"Öğretilen karşılık: {item.expansion}", "komut": item.phrase,
+                 "kisisel": "1"}
+                for item in self.custom_commands.all()
+            ]
             return {
                 "durum": "hazir",
-                "ozet": f"{len(satirlar)} kolay örnek",
+                "ozet": f"{len(satirlar)} komut · {len(self.custom_commands.all())} kişisel",
                 "satirlar": satirlar,
             }
+
+        def kayitlar() -> dict[str, Any]:
+            traces = list(self.agent.trace_log.entries[-12:])
+            errors = sum(t.response_status != "ok" for t in traces)
+            return {"durum": "hazir" if traces else "bos",
+                    "ozet": f"{len(traces)} son işlem · {errors} hata",
+                    "satirlar": [
+                        {"ad": t.detected_intent,
+                         "deger": f"{t.response_status} · {t.latency_ms:.0f} ms",
+                         "aciklama": t.error or ", ".join(t.tools_used) or "araç kullanılmadı"}
+                        for t in reversed(traces)]}
+
+        def saglik() -> dict[str, Any]:
+            t = collect_telemetry()
+            ram, disk, gpu = t["ram"], t["disk"], t["gpu"]
+            satirlar = [
+                {"ad": "CPU", "deger": f"%{t['cpu']['percent']:.0f}"},
+                {"ad": "RAM", "deger": f"%{ram['percent']:.0f} · {max(0.0, ram['total_gb'] - ram['used_gb']):.1f} GB boş"},
+                {"ad": "Disk", "deger": f"%{disk['used_percent']:.0f} · SMART {disk['smart'] or 'bilinmiyor'}"},
+                {"ad": "GPU", "deger": (f"{gpu.get('name') or 'GPU'} · {gpu.get('temp_c') or '—'} °C"
+                                           if gpu.get("available") else "algılanmadı")},
+                {"ad": "Model", "deger": getattr(self.agent.llm, "model", "") or self.agent.llm.name},
+                {"ad": "Güvenlik", "deger": "izin ve denetim katmanı etkin"},
+            ]
+            kritik = ram["percent"] >= 95 or disk["used_percent"] >= 95
+            return {"durum": "uyari" if kritik else "hazir",
+                    "ozet": "dikkat gerekli" if kritik else "temel kontroller normal",
+                    "satirlar": satirlar}
 
         return {
             "sistem": guvenli(sistem, {"durum": "yok", "ozet": "", "satirlar": []}),
@@ -409,6 +449,8 @@ class PanelServer:
             "bilgi": guvenli(bilgi, {"durum": "yok", "ozet": "", "satirlar": []}),
             "araclar": guvenli(araclar, {"durum": "yok", "ozet": "", "satirlar": []}),
             "komutlar": guvenli(komutlar, {"durum": "yok", "ozet": "", "satirlar": []}),
+            "kayitlar": guvenli(kayitlar, {"durum": "yok", "ozet": "log okunamadı", "satirlar": []}),
+            "saglik": guvenli(saglik, {"durum": "yok", "ozet": "sağlık ölçülemedi", "satirlar": []}),
             # Henüz yok. Uydurma veri yerine açıkça söylüyoruz.
             "ajanda": {"durum": "yok",
                        "ozet": "bu modül henüz yapılmadı",
@@ -421,7 +463,8 @@ class PanelServer:
     def _on_state(self, old: JarvisState, new: JarvisState) -> None:
         self.hub.publish("state", {"state": new.value, "label": new.label_tr})
 
-    def ask(self, text: str, *, speech: SpeechNormalization | None = None
+    def ask(self, text: str, *, speech: SpeechNormalization | None = None,
+            approved_high: bool = False
             ) -> tuple[str, str | None]:
         """One agent turn, serialised — the agent holds mutable history.
 
@@ -430,16 +473,27 @@ class PanelServer:
         so the written answer appears immediately instead of waiting on audio.
         """
         self.hub.publish("transcript", {"role": "user", "text": text}, retain=False)
+        resolved = self.custom_commands.resolve(text)
+        agent_text = resolved or text
         with self._agent_lock:
-            if speech is None:
-                answer = self.agent.ask(text)
-            else:
-                answer = self.agent.ask(
-                    text,
-                    original_text=speech.original_text,
-                    speech_confidence=speech.confidence,
-                    speech_ambiguity=speech.ambiguity,
-                )
+            permissions = self.agent.tools.permissions
+            previous_approver = permissions.approver
+            if approved_high and speech is None:
+                # Browser approval is deliberately valid for this one turn and
+                # HIGH only. CRITICAL operations still require typed CLI approval.
+                permissions.approver = lambda _tool, risk, _args, _prompt: risk == RiskLevel.HIGH
+            try:
+                if speech is None:
+                    answer = self.agent.ask(agent_text)
+                else:
+                    answer = self.agent.ask(
+                        agent_text,
+                        original_text=speech.original_text,
+                        speech_confidence=speech.confidence,
+                        speech_ambiguity=speech.ambiguity,
+                    )
+            finally:
+                permissions.approver = previous_approver
         self.hub.publish("transcript", {"role": "assistant", "text": answer}, retain=False)
 
         speech_id = None
@@ -669,6 +723,12 @@ def _make_handler(server: PanelServer):
                 return self._handle_objects()
             if path == "/ocr":
                 return self._handle_ocr()
+            if path == "/komut-ogret":
+                return self._handle_custom_command()
+            if path == "/komut-sil":
+                return self._handle_custom_command(delete=True)
+            if path == "/komut-analiz":
+                return self._handle_command_analysis()
             if path != "/ask":
                 return self._json(404, {"error": "bulunamadı"})
             try:
@@ -680,10 +740,48 @@ def _make_handler(server: PanelServer):
             if not text:
                 return self._json(400, {"error": "boş mesaj"})
             try:
-                answer, speech_id = server.ask(text)
+                answer, speech_id = server.ask(
+                    text, approved_high=bool(payload.get("approve_high", False)))
                 return self._json(200, {"answer": answer, "speech_id": speech_id})
             except Exception as exc:
                 return self._json(500, {"error": f"{type(exc).__name__}: {exc}"})
+
+        def _handle_custom_command(self, *, delete: bool = False) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    return self._json(400, {"error": "geçersiz istek boyutu"})
+                payload = json.loads(self.rfile.read(length))
+                phrase = str(payload.get("phrase", "")).strip()
+                if delete:
+                    return self._json(200, {"deleted": server.custom_commands.delete(phrase)})
+                item = server.custom_commands.teach(
+                    phrase, str(payload.get("expansion", "")).strip())
+                return self._json(200, {"saved": True, "phrase": item.phrase,
+                                        "expansion": item.expansion})
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return self._json(400, {"error": str(exc)})
+
+        def _handle_command_analysis(self) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    return self._json(400, {"error": "geçersiz istek boyutu"})
+                payload = json.loads(self.rfile.read(length))
+                original = str(payload.get("text", "")).strip()
+                if not original:
+                    return self._json(400, {"error": "boş mesaj"})
+                resolved = server.custom_commands.resolve(original) or original
+                decision = server.agent.intent_router.route(resolved)
+                return self._json(200, {
+                    "intent": decision.intent.value,
+                    "risk": decision.risk.label,
+                    "needs_confirmation": decision.needs_confirmation,
+                    "reason": decision.reason,
+                    "resolved": resolved if resolved != original else "",
+                })
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return self._json(400, {"error": str(exc)})
 
         def _handle_listen(self) -> None:
             """Transcribe the posted recording locally and return the text."""

@@ -56,3 +56,9 @@ def test_panel_html_has_the_command_tab_and_safe_text_insertion():
     assert 'data-modul="komutlar"' in html
     assert "kutu.value = s.komut" in html
     assert "v.textContent = s.deger" in html
+    assert 'ara.placeholder="Komut ara…"' in html
+    assert 'fetch("/komut-ogret"' in html
+    assert 'data-modul="saglik"' in html
+    assert 'data-modul="kayitlar"' in html
+    assert "jarvis-komut-favorileri-v1" in html
+    assert "jarvis-komut-gecmisi-v1" in html

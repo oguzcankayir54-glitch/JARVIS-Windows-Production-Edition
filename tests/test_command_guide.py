@@ -9,17 +9,17 @@ from jarvis.web.server import PanelServer
 
 def test_command_examples_are_short_unique_and_natural():
     texts = [item.text for item in COMMAND_EXAMPLES]
-    assert len(texts) >= 12
+    assert len(texts) > 100
     assert len(texts) == len(set(texts))
     assert all(8 <= len(text) <= 90 for text in texts)
     assert all(not text.startswith("/") for text in texts)
 
 
-def test_qwen_system_prompt_contains_the_same_examples_as_the_panel():
+def test_qwen_system_prompt_has_compact_category_guidance():
     prompt = build_system_prompt()
     assert command_guide_prompt() in prompt
-    for item in COMMAND_EXAMPLES:
-        assert item.text in prompt
+    assert len(command_guide_prompt()) < 4_000
+    assert all(item.category in prompt for item in COMMAND_EXAMPLES)
 
 
 def test_panel_exposes_clickable_command_examples():
@@ -34,17 +34,19 @@ def test_panel_exposes_clickable_command_examples():
 def test_advertised_action_examples_reach_the_expected_intents():
     router = IntentRouter()
     expected = {
-        "Sistem durumu nasıl?": Intent.SYSTEM_MONITOR,
-        "Görev yöneticisini aç.": Intent.COMPUTER_CONTROL,
-        "Bunu hatırla: Ana çalışma diskim C sürücüsü.": Intent.MEMORY_SAVE,
-        "Açık vakaları göster.": Intent.TASK,
-        "Bilgi tabanında NVMe sorununu ara.": Intent.RAG_QUERY,
-        "İnternette RTX 3080 Ti sürücüsünü araştır.": Intent.WEB_RESEARCH,
-        "Klasörü listele: C:\\Projeler": Intent.CODING,
-        "GitHub'daki son commitlere bak.": Intent.GITHUB,
+        "system_monitor": Intent.SYSTEM_MONITOR,
+        "computer_control": Intent.COMPUTER_CONTROL,
+        "task": Intent.TASK,
+        "rag_query": Intent.RAG_QUERY,
+        "web_research": Intent.WEB_RESEARCH,
+        "coding": Intent.CODING,
+        "github": Intent.GITHUB,
     }
-    for text, intent in expected.items():
-        assert router.route(text).intent is intent, text
+    for item in COMMAND_EXAMPLES:
+        if item.intent == "memory":
+            assert router.route(item.text).intent in {Intent.MEMORY_SAVE, Intent.MEMORY_RECALL}, item.text
+        else:
+            assert router.route(item.text).intent is expected[item.intent], item.text
 
 
 def test_panel_html_has_the_command_tab_and_safe_text_insertion():

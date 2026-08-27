@@ -121,7 +121,8 @@ class IntentRouter:
     )
     _RAG_EXPLICIT = (
         "bilgi tabaninda", "bilgi tabanindan", "dokumaninda", "dokumanda", "pdf'de",
-        "pdf de", "pdfde", "bu pdf", "belgede", "belgeden", "arsivinde", "rag'de",
+        "pdf de", "pdfde", "bu pdf", "belgede", "belgelerde", "belgeden", "yerel belgelerde",
+        "dokumanlarda", "arsivde", "arsivinde", "rag'de",
         "rag de", "ragde",
     )
     _WEB = ("internette", "internetten", "webde", "web'de", "guncel bilgi", "guncel olarak",
@@ -131,11 +132,14 @@ class IntentRouter:
         "not defterini ac", "hesap makinesini ac", "ayarlar'i ac", "ayarlari ac",
         "youtube'u ac", "tarayiciyi ac", "uygulama ac", "gorev yoneticisini ac",
         "task manager ac", "gorev yoneticisi gelsin", "gorev yoneticisine bakalim",
+        "dosya gezginini ac", "paint'i ac", "komut istemini ac", "powershell'i ac",
+        "denetim masasini ac", "aygit yoneticisini ac", "disk yonetimini ac",
+        "sistem bilgilerini ac", "windows guvenligini ac",
     )
     _SYSTEM = (
         "cpu", "islemci", "gpu", "ekran kart", "ram", "bellek", "disk", "ssd", "hdd",
         "smart", "sicaklik", "sicakligi", "fan", "sistem durumu", "donanim durumu",
-        "kullanimim", "kullanimi", "performans neden", "neden bu kadar yuksek",
+        "kullanimim", "kullanimi", "sistem yuku", "performans neden", "neden bu kadar yuksek",
     )
     _VOICE = ("mikrofon", "sesli mod", "sesli dinle", "beni duyuyor", "konusmami algila", "stt")
     _AUTONOMOUS = ("kendi basina", "otonom", "autonomous", "ben sormadan devam et")
@@ -256,6 +260,12 @@ class IntentRouter:
             return self._d(Intent.CODING, 0.94, requires_tool=True,
                            reason="açık dosya/kaynak okuma işlemi")
 
+        # Explicit service-case language wins over hardware words inside the
+        # case description (for example "SSD vakası").
+        if self._has(text, self._CASE_TASK):
+            return self._d(Intent.TASK, 0.94, requires_tool=True, subtype="SERVICE_CASE",
+                           reason="teknik servis vaka işlemi")
+
         # Coding precedes generic document/file routing.  "Jarvis klasöründeki
         # authentication kodunu incele" must not become RAG_QUERY merely
         # because it contains "klasör/proje".
@@ -293,10 +303,6 @@ class IntentRouter:
 
         if self._has(text, self._AUTONOMOUS):
             return self._d(Intent.AUTONOMOUS, 0.9, reason="otonom çalışma isteği")
-
-        if self._has(text, self._CASE_TASK):
-            return self._d(Intent.TASK, 0.94, requires_tool=True, subtype="SERVICE_CASE",
-                           reason="teknik servis vaka işlemi")
 
         if self._has(text, self._TASK):
             return self._d(Intent.TASK, 0.9, reason="görev/todo isteği")

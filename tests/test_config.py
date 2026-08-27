@@ -6,6 +6,7 @@ Regression guard: env-backed fields must use ``default_factory``. With a plain
 correct API key looks missing.
 """
 import os
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,7 @@ _ENV_KEYS = [
     "JARVIS_LLM_PROVIDER", "JARVIS_OLLAMA_MODEL", "JARVIS_NON_INTERACTIVE",
     "JARVIS_MAX_AGENT_STEPS", "JARVIS_DATA_DIR",
     "JARVIS_TEMPERATURE", "JARVIS_TOP_P", "JARVIS_REPEAT_PENALTY",
+    "JARVIS_RAG_AUTO_PATHS", "JARVIS_RAG_SYNC_INTERVAL",
 ]
 
 
@@ -141,6 +143,23 @@ def test_stt_settings_come_from_dotenv(clean_env):
     cfg = load_config()
     assert (cfg.stt_model, cfg.stt_device) == ("medium", "cpu")
     assert cfg.stt_enabled is False
+
+
+# ---------------- automatic knowledge sync ----------------
+
+def test_rag_auto_sync_is_opt_in(clean_env):
+    cfg = load_config()
+    assert cfg.rag_auto_paths == ()
+    assert cfg.rag_sync_interval == 60.0
+
+
+def test_rag_auto_paths_are_expanded_and_empty_items_ignored(clean_env, monkeypatch):
+    monkeypatch.setenv("JARVIS_RAG_AUTO_PATHS", "~/notlar, ,/srv/belgeler")
+    monkeypatch.setenv("JARVIS_RAG_SYNC_INTERVAL", "2")
+    cfg = load_config()
+    assert [str(p) for p in cfg.rag_auto_paths] == [
+        str(Path("~/notlar").expanduser()), "/srv/belgeler"]
+    assert cfg.rag_sync_interval == 10.0, "çok sık tarama sınırlandırılmalı"
 
 
 # ---------------- sampling ----------------

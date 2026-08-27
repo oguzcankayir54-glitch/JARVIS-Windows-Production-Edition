@@ -274,11 +274,27 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - ✅ Yerel kamera, yüz, nesne ve OCR altyapısı
 - 🔸 Temiz Windows donanım kabul testleri
 - 🔸 Teşhis playbook ve karar ağacı
-- 🔸 RAG panel yönetimi ve otomatik yeniden indeksleme
+- ✅ RAG panel yönetimi ve otomatik yeniden indeksleme
 - 🔸 Otomatik yedekleme ve kurtarma
 - 🔸 HTTPS üzerinden telefon/iPhone istemcisi
 - 🔸 Uzak hedef makine teşhis ajanı
 - 🔸 Proaktif bildirim ve ajanda
+
+## Belgeler
+
+## Faz durumu
+
+1. ✅ **Faz 0–1** — Core + güvenli araç katmanı + host telemetri + terminal agent
+2. ✅ **Faz 1.5** — Hafıza (SQLite) + terminal/dosya araçları + iki kademeli koruma
+3. ✅ **Faz 2** — Ses: ElevenLabs TTS ✅ · faster-whisper STT ✅ · Canlı panel ✅
+   (telefonda mikrofon HTTPS bekliyor — `docs/MIKROFON.md`)
+4. ✅ **Faz 3** — RAG: hibrit arama (anlam + kelime) · `jarvis-bilgi` ·
+   panelden kaynaklı arama · seçili klasörleri otomatik eşitleme
+   (`docs/BILGI-TABANI.md`)
+5. 🔸 **Faz 4** — Diagnostic Brain: vaka kaydı ✅ · geçmiş arama ✅ · karar ağacı, playbook sırada
+6. **Faz 5** — iPhone istemci · 🔸 **Faz 6** — Vision: hedef takibi ✅ ·
+    yüz tanıma, karşılama, nesne tanıma sırada (`docs/KAMERA.md`) ·
+    **Faz 7** — Proaktif + Ajanda
 
 ## Belgeler
 
@@ -290,6 +306,25 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - [Kamera](docs/KAMERA.md)
 - [Model karşılaştırma](docs/MODEL-KARSILASTIRMA.md)
 - [Gereksinim ve risk analizi](docs/REQUIREMENTS_ANALYSIS.md)
+
+## Kurulum yolları
+
+| Ortam | Rehber | GPU |
+|---|---|---|
+| **Windows + WSL2** ⭐ | `docs/KURULUM-WSL2.md` | ✅ tam |
+| Bare-metal Linux | `docs/DONANIM-VE-KURULUM-PLANI.md` | ✅ tam + sensörler |
+| VirtualBox (demo) | `docs/DEMO-KALI-VIRTUALBOX.md` | ❌ yok |
+
+Ayrıntılı mimari ve gerekçeler: `docs/ARCHITECTURE.md`,
+`docs/REQUIREMENTS_ANALYSIS.md`, `docs/JARVIS-Proje-Dokumani.pdf`.
+
+Donanım planlaması:
+
+| Belge | İçerik |
+|---|---|
+| `docs/JARVIS-32B-Sistem-Tasarimi.pdf` | **Güncel plan** — 32B sistem, görsel tasarım, katmanlı bütçe |
+| `docs/JARVIS-Donanim-Butce-Raporu.pdf` | 70B analizi ve dört yolun karşılaştırması (arka plan) |
+| `docs/MODEL-KARSILASTIRMA.md` | Kart almadan önce modeli kör olarak sınama |
 
 ---
 

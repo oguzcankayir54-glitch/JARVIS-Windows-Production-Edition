@@ -37,6 +37,7 @@ import psutil
 
 from ..core.agent import Agent
 from ..core.state import JarvisState
+from ..rag.index import RagError
 from ..core.asistan import asistan_bul
 from ..security.permissions import RiskLevel
 from ..vision.detect import MAX_FRAME_BYTES, VisionError, build_vision
@@ -60,6 +61,12 @@ PANEL_HTML = Path(__file__).resolve().parents[2] / "docs" / "mockups" / "jarvis-
 #: Uygulama penceresinin baslik cubugundaki ve gorev cubugundaki simge
 #: buradan geliyor: tarayici sayfanin favicon'unu kullaniyor.
 PANEL_ICO = Path(__file__).resolve().parents[2] / "windows" / "jarvis.ico"
+
+# Panel aramasının model bağlamını veya tarayıcıyı sınırsız içerikle
+# doldurmasına izin verilmez.
+RAG_SORGU_KARAKTER = 500
+RAG_SONUC_LIMITI = 8
+RAG_ONIZLEME_KARAKTER = 900
 
 
 class _PanelHTTPServer(ThreadingHTTPServer):
@@ -188,6 +195,7 @@ class PanelServer:
                  face_recognizer=None,
                  custom_commands: CustomCommandStore | None = None,
                  sesli_onay_tabani: RiskLevel = RiskLevel.MEDIUM,
+                 rag_auto_paths=(), rag_sync_interval: float = 60.0,
                  llm_uyari: str = "") -> None:
         self.agent = agent
         self.host = host
@@ -220,6 +228,14 @@ class PanelServer:
         self._speech_lock = threading.Lock()
         self._httpd: ThreadingHTTPServer | None = None
         self._stop = threading.Event()
+        self.rag_auto_paths = tuple(Path(p).expanduser() for p in rag_auto_paths)
+        self.rag_sync_interval = max(0.05, float(rag_sync_interval))
+        self._rag_sync_lock = threading.Lock()
+        self._rag_sync = {
+            "durum": "bekliyor" if self.rag_auto_paths else "kapalı",
+            "yollar": len(self.rag_auto_paths), "son": 0.0, "hata": "",
+            "eklenen": 0, "guncellenen": 0, "silinen": 0,
+        }
 
         agent.state.subscribe(self._on_state)
         self.hub.publish("state", {"state": agent.state.state.value,
@@ -292,17 +308,80 @@ class PanelServer:
         """
         kb = getattr(self.agent, "knowledge", None)
         if kb is None:
-            return {"rag": False, "rag_parca": 0, "rag_belge": 0, "rag_anlam": False}
+            with self._rag_sync_lock:
+                sync = dict(self._rag_sync)
+            return {"rag": False, "rag_parca": 0, "rag_belge": 0,
+                    "rag_anlam": False, "rag_sync": sync}
         try:
             d = kb.stats()
         except Exception:
-            return {"rag": False, "rag_parca": 0, "rag_belge": 0, "rag_anlam": False}
+            with self._rag_sync_lock:
+                sync = dict(self._rag_sync)
+            return {"rag": False, "rag_parca": 0, "rag_belge": 0,
+                    "rag_anlam": False, "rag_sync": sync}
+        with self._rag_sync_lock:
+            sync = dict(self._rag_sync)
         return {
             "rag": bool(d.get("parca")),
             "rag_parca": int(d.get("parca", 0)),
             "rag_belge": int(d.get("belge", 0)),
             "rag_anlam": bool(d.get("anlam_aramasi")),
+            "rag_sync": sync,
         }
+
+    def bilgi_ara(self, sorgu: str, limit: int = 5) -> dict[str, Any]:
+        """Search indexed documents for the panel, with bounded output."""
+        kb = getattr(self.agent, "knowledge", None)
+        if kb is None:
+            raise RuntimeError("Bilgi tabanı bağlı değil.")
+        sorgu = (sorgu or "").strip()
+        if not sorgu:
+            raise ValueError("boş sorgu")
+        if len(sorgu) > RAG_SORGU_KARAKTER:
+            raise ValueError(f"sorgu çok uzun (en fazla {RAG_SORGU_KARAKTER} karakter)")
+        try:
+            sayi = max(1, min(int(limit), RAG_SONUC_LIMITI))
+        except (TypeError, ValueError):
+            sayi = 5
+        basladi = time.time()
+        hitler = kb.search(sorgu, limit=sayi)
+        return {
+            "sorgu": sorgu, "adet": len(hitler),
+            "sure_ms": int((time.time() - basladi) * 1000),
+            "sonuclar": [
+                {**h.as_dict(), "metin": h.metin[:RAG_ONIZLEME_KARAKTER]}
+                for h in hitler
+            ],
+        }
+
+    def _rag_sync_loop(self) -> None:
+        """Synchronise explicitly configured roots until the panel stops."""
+        kb = getattr(self.agent, "knowledge", None)
+        if kb is None or not self.rag_auto_paths:
+            return
+        while not self._stop.is_set():
+            toplam = {"eklenen": 0, "guncellenen": 0, "silinen": 0}
+            hatalar = []
+            with self._rag_sync_lock:
+                self._rag_sync["durum"] = "çalışıyor"
+            for yol in self.rag_auto_paths:
+                if self._stop.is_set():
+                    return
+                try:
+                    rapor = kb.index_path(yol, silinenleri_unut=True)
+                    for ad in toplam:
+                        toplam[ad] += int(getattr(rapor, ad))
+                except Exception as exc:
+                    hatalar.append(f"{yol}: {exc}")
+            with self._rag_sync_lock:
+                self._rag_sync.update(toplam)
+                self._rag_sync.update({
+                    "durum": "hata" if hatalar else "hazır",
+                    "son": time.time(), "hata": " · ".join(hatalar)[:500],
+                })
+            self.hub.publish("meta", self._meta())
+            if self._stop.wait(self.rag_sync_interval):
+                return
 
     def modul_verisi(self) -> dict[str, Any]:
         """Per-module detail for the panel's module bar.
@@ -363,10 +442,18 @@ class PanelServer:
             if kb is None:
                 return {"durum": "yok", "ozet": "bilgi tabanı bağlı değil", "satirlar": []}
             d = kb.stats()
+            with self._rag_sync_lock:
+                sync = dict(self._rag_sync)
+            sync_degeri = ("kapalı" if not sync["yollar"] else
+                            f"{sync['durum']} · {sync['yollar']} yol")
+            sync_satirlari = [{"ad": "Otomatik eşitleme", "deger": sync_degeri}]
+            if sync["hata"]:
+                sync_satirlari.append({"ad": "Eşitleme hatası", "deger": sync["hata"]})
             if not d.get("parca"):
                 return {"durum": "bos", "ozet": "boş — henüz belge eklenmedi",
                         "satirlar": [{"ad": "Eklemek için",
-                                      "deger": "jarvis-bilgi ekle <klasör>"}]}
+                                      "deger": "jarvis-bilgi ekle <klasör>"}]
+                                    + sync_satirlari}
             belgeler = kb.documents(limit=8)
             return {
                 "durum": "hazir",
@@ -375,7 +462,8 @@ class PanelServer:
                     {"ad": "Arama", "deger":
                      "anlam + kelime" if d["anlam_aramasi"] else "yalnızca kelime"},
                     {"ad": "Gömme modeli", "deger": d["model"] or "(yok)"},
-                ] + [{"ad": b["yol"].rsplit("/", 1)[-1], "deger": f"{b['parca']} parça"}
+                ] + sync_satirlari + [
+                    {"ad": b["yol"].rsplit("/", 1)[-1], "deger": f"{b['parca']} parça"}
                      for b in belgeler],
             }
 
@@ -609,6 +697,8 @@ class PanelServer:
         self._httpd = _PanelHTTPServer((self.host, self.port), handler)
         self._httpd.daemon_threads = True
         threading.Thread(target=self._telemetry_loop, daemon=True).start()
+        if self.rag_auto_paths:
+            threading.Thread(target=self._rag_sync_loop, daemon=True).start()
         try:
             self._httpd.serve_forever()
         finally:
@@ -724,6 +814,8 @@ def _make_handler(server: PanelServer):
             if not self._authorised():
                 return self._reject()
             path = urllib.parse.urlparse(self.path).path
+            if path == "/bilgi/ara":
+                return self._handle_bilgi_ara()
             if path == "/listen":
                 return self._handle_listen()
             if path == "/konus":
@@ -793,6 +885,28 @@ def _make_handler(server: PanelServer):
                 })
             except (ValueError, TypeError, json.JSONDecodeError) as exc:
                 return self._json(400, {"error": str(exc)})
+
+        def _handle_bilgi_ara(self) -> None:
+            """Bounded, read-only knowledge search for the Bilgi tab."""
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return self._json(400, {"error": "geçersiz uzunluk"})
+            if length <= 0 or length > 4096:
+                return self._json(400 if length <= 0 else 413,
+                                  {"error": "boş istek" if length <= 0 else
+                                   "arama isteği çok büyük"})
+            try:
+                payload = json.loads(self.rfile.read(length))
+                sorgu = str(payload.get("sorgu", ""))
+                limit = payload.get("limit", 5)
+                return self._json(200, server.bilgi_ara(sorgu, limit))
+            except json.JSONDecodeError:
+                return self._json(400, {"error": "geçersiz istek"})
+            except (ValueError, RagError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception as exc:
+                return self._json(500, {"error": f"Bilgi tabanı okunamadı: {exc}"})
 
         def _handle_listen(self) -> None:
             """Transcribe the posted recording locally and return the text."""

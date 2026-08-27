@@ -33,7 +33,9 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import struct
+import threading
 import time
+from functools import wraps
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -149,6 +151,7 @@ class IndexReport:
     eklenen: int = 0
     guncellenen: int = 0
     degismeyen: int = 0
+    silinen: int = 0
     atlanan: int = 0
     #: Yeni yazılan parça sayısı (değişmeyen belgeler sayılmaz).
     parca: int = 0
@@ -164,7 +167,8 @@ class IndexReport:
 
     def ozet(self) -> str:
         return (f"{self.eklenen} yeni · {self.guncellenen} güncellendi · "
-                f"{self.degismeyen} değişmedi · {self.atlanan} atlandı · "
+                f"{self.degismeyen} değişmedi · {self.silinen} silindi · "
+                f"{self.atlanan} atlandı · "
                 f"{self.parca} yeni parça · {self.sure:.1f} sn")
 
 
@@ -195,6 +199,15 @@ CREATE INDEX IF NOT EXISTS idx_parca_belge ON parcalar(belge_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS parca_fts
     USING fts5(katlanmis, parca_id UNINDEXED, tokenize='unicode61');
 """
+
+
+def _kilitli(func):
+    """Serialise public SQLite operations, including background re-indexing."""
+    @wraps(func)
+    def sarici(self, *args, **kwargs):
+        with self._kilit:
+            return func(self, *args, **kwargs)
+    return sarici
 
 
 def _imza(veri: str) -> str:
@@ -234,10 +247,14 @@ class KnowledgeBase:
         self._conn.executescript(_SEMA)
         self._conn.commit()
         self.embedder: Embedder = embedder if embedder is not None else NullEmbedder()
+        # Panel arka planda senkronlarken ajan aynı tabanda arama yapabilir.
+        # RLock gerekli: index_path -> index_file -> index_text iç içe girer.
+        self._kilit = threading.RLock()
         # Vektörler her sorguda diskten okunursa arama I/O'ya bağlı kalıyor;
         # bir kez okunup bellekte tutuluyor ve her yazmada geçersizleşiyor.
         self._vektor_onbellek: tuple[list[int], list[list[float]]] | None = None
 
+    @_kilitli
     def close(self) -> None:
         self._conn.close()
 
@@ -246,6 +263,7 @@ class KnowledgeBase:
     def _onbellegi_bosalt(self) -> None:
         self._vektor_onbellek = None
 
+    @_kilitli
     def forget_document(self, yol: str) -> bool:
         """Remove a document and everything indexed from it."""
         satir = self._conn.execute(
@@ -267,6 +285,7 @@ class KnowledgeBase:
             self._conn.execute("DELETE FROM parca_fts WHERE parca_id = ?", (pid,))
         self._conn.execute("DELETE FROM parcalar WHERE belge_id = ?", (belge_id,))
 
+    @_kilitli
     def clear(self) -> None:
         self._conn.execute("DELETE FROM parca_fts")
         self._conn.execute("DELETE FROM parcalar")
@@ -274,6 +293,7 @@ class KnowledgeBase:
         self._conn.commit()
         self._onbellegi_bosalt()
 
+    @_kilitli
     def index_text(self, yol: str, metin: str, tur: str = "belge",
                    gom: bool = True) -> IndexResult:
         """Index one document given its text.
@@ -346,6 +366,7 @@ class KnowledgeBase:
             "INSERT INTO parca_fts (katlanmis, parca_id) VALUES (?, ?)",
             (katla(parca.text), parca_id))
 
+    @_kilitli
     def index_file(self, yol: Path | str, gom: bool = True) -> IndexResult:
         """Index a single file, refusing the ones that must never be indexed."""
         p = Path(yol).expanduser().resolve()
@@ -363,8 +384,9 @@ class KnowledgeBase:
         tur = "kod" if p.suffix.lower() in {".py", ".js", ".ts", ".sh", ".ps1"} else "belge"
         return self.index_text(str(p), metin, tur=tur, gom=gom)
 
+    @_kilitli
     def index_path(self, kok: Path | str, gom: bool = True,
-                   ilerleme=None) -> IndexReport:
+                   ilerleme=None, silinenleri_unut: bool = False) -> IndexReport:
         """Walk a directory (or take a single file) and index what belongs.
 
         Everything skipped is counted by reason. Silent skipping is how a
@@ -374,12 +396,20 @@ class KnowledgeBase:
         rapor = IndexReport()
         kok_yolu = Path(kok).expanduser().resolve()
         if not kok_yolu.exists():
+            # Tek dosyalık otomatik kaynak silindiyse hayalet sonucu bırakma.
+            # Klasörün tamamı yoksa (ör. geçici bağlı disk) toplu silme yapma:
+            # kaynak erişim hatası, kullanıcı verisini yeniden kurma sebebi değil.
+            if silinenleri_unut and self.forget_document(str(kok_yolu)):
+                rapor.silinen = 1
+                rapor.sure = time.time() - basladi
+                return rapor
             raise RagError(f"Yol yok: {kok_yolu}")
 
         if gom and not self.embedder.available:
             rapor.gomme_notu = getattr(self.embedder, "reason", "")
 
-        for dosya in self._dosyalari_bul(kok_yolu, rapor):
+        adaylar = list(self._dosyalari_bul(kok_yolu, rapor))
+        for dosya in adaylar:
             try:
                 sonuc = self.index_file(dosya, gom=gom)
             except RagError as exc:
@@ -413,6 +443,19 @@ class KnowledgeBase:
             if ilerleme is not None:
                 ilerleme(str(dosya), sonuc.parca)
 
+        if silinenleri_unut:
+            guncel = {str(p.resolve()) for p in adaylar}
+            for belge in self.documents(limit=1_000_000):
+                belge_yolu = Path(str(belge["yol"]))
+                try:
+                    kapsamda = (belge_yolu == kok_yolu if kok_yolu.is_file()
+                                else belge_yolu.is_relative_to(kok_yolu))
+                except (OSError, ValueError):
+                    kapsamda = False
+                if kapsamda and str(belge_yolu) not in guncel:
+                    if self.forget_document(str(belge_yolu)):
+                        rapor.silinen += 1
+
         rapor.sure = time.time() - basladi
         return rapor
 
@@ -422,6 +465,10 @@ class KnowledgeBase:
             return
         for yol in sorted(kok.rglob("*")):
             if yol.is_dir():
+                continue
+            if yol.is_symlink():
+                rapor.atlanan += 1
+                rapor.sebepler["bağlantı"] = rapor.sebepler.get("bağlantı", 0) + 1
                 continue
             # Gizli dizinler ve üretilmiş içerik hiç açılmaz.
             if any(p in ATLANAN_DIZINLER or (p.startswith(".") and p not in {".", ".."})
@@ -499,6 +546,7 @@ class KnowledgeBase:
             return []
         return [int(r["parca_id"]) for r in satirlar]
 
+    @_kilitli
     def search(self, sorgu: str, limit: int = 6) -> list[Hit]:
         """Hybrid search: semantic and keyword rankings fused with RRF."""
         sorgu = (sorgu or "").strip()
@@ -536,6 +584,7 @@ class KnowledgeBase:
 
     # ---------------- durum ----------------
 
+    @_kilitli
     def stats(self) -> dict[str, object]:
         """What is in the base — the numbers the panel and CLI report."""
         belge = self._conn.execute("SELECT COUNT(*) n FROM belgeler").fetchone()["n"]
@@ -553,6 +602,7 @@ class KnowledgeBase:
             "anlam_aramasi": bool(self.embedder.available and vektorlu),
         }
 
+    @_kilitli
     def documents(self, limit: int = 100) -> list[dict[str, object]]:
         satirlar = self._conn.execute(
             "SELECT yol, tur, parca_sayisi, boyut, eklendi_ts FROM belgeler "

@@ -10,6 +10,7 @@ import pytest
 from jarvis.bootstrap import build_agent
 from jarvis.config import Config
 from jarvis.memory.store import MemoryStore
+from jarvis.rag.index import KnowledgeBase
 from jarvis.web.server import PanelServer, _PanelHTTPServer, collect_telemetry
 
 
@@ -106,6 +107,13 @@ def test_panel_is_served_in_live_mode(server):
     assert status == 200
     assert 'data-live="1"' in html, "panel canlı moda geçirilmeli"
     assert "Neural Core" in html
+
+
+def test_panel_contains_interactive_knowledge_search(server):
+    _, html = _get(server, "/")
+    assert 'id="bilgiForm"' in html
+    assert 'fetch("/bilgi/ara"' in html
+    assert "metin.textContent = h.metin" in html
 
 
 def test_ask_returns_answer(server):
@@ -623,6 +631,99 @@ def test_an_empty_knowledge_tab_says_how_to_fill_it(server):
     bilgi = server.modul_verisi()["bilgi"]
     assert bilgi["durum"] == "bos"
     assert any("jarvis-bilgi ekle" in s["deger"] for s in bilgi["satirlar"])
+
+
+def test_knowledge_tab_exposes_the_auto_sync_error(server):
+    with server._rag_sync_lock:
+        server._rag_sync.update({
+            "durum": "hata", "yollar": 1,
+            "hata": "/olmayan: Yol yok", "son": 0.0,
+        })
+    satirlar = server.modul_verisi()["bilgi"]["satirlar"]
+    assert any(s["ad"] == "Eşitleme hatası" and "Yol yok" in s["deger"]
+               for s in satirlar)
+
+
+def _bilgili_panel(tmp_path, token=""):
+    kb = KnowledgeBase(":memory:")
+    kb.index_text("/notlar/ekran.md", "# Ekran\n\nDisplayPort kablosunu kontrol edin.\n")
+    cfg = Config(llm_provider="mock", non_interactive=True)
+    agent = build_agent(cfg, memory=MemoryStore(":memory:"), knowledge=kb)
+    srv = PanelServer(agent, host="127.0.0.1", port=0, token=token)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    _hazir_bekle(srv)
+    return srv
+
+
+def test_knowledge_search_endpoint_returns_citable_results(tmp_path):
+    srv = _bilgili_panel(tmp_path)
+    try:
+        status, body = _post(srv, "/bilgi/ara", {"sorgu": "DisplayPort"})
+        assert status == 200
+        assert body["adet"] == 1
+        assert body["sonuclar"][0]["kaynak"].startswith("/notlar/ekran.md:")
+        assert body["sonuclar"][0]["neden"] == "kelime"
+    finally:
+        srv.shutdown()
+
+
+def test_knowledge_search_rejects_empty_and_overlong_queries(tmp_path):
+    srv = _bilgili_panel(tmp_path)
+    try:
+        for sorgu in ("", "x" * 501):
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                _post(srv, "/bilgi/ara", {"sorgu": sorgu})
+            assert exc.value.code == 400
+    finally:
+        srv.shutdown()
+
+
+def test_knowledge_search_requires_panel_token(tmp_path):
+    srv = _bilgili_panel(tmp_path, token="gizli")
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{srv.port}/bilgi/ara",
+            data=json.dumps({"sorgu": "DisplayPort"}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=5)
+        assert exc.value.code == 401
+    finally:
+        srv.shutdown()
+
+
+def test_background_sync_adds_changes_and_removes_documents(tmp_path):
+    kaynak = tmp_path / "bilgi"
+    kaynak.mkdir()
+    belge = kaynak / "not.md"
+    belge.write_text("ilkbenzersiz", encoding="utf-8")
+    kb = KnowledgeBase(":memory:")
+    cfg = Config(llm_provider="mock", non_interactive=True)
+    agent = build_agent(cfg, memory=MemoryStore(":memory:"), knowledge=kb)
+    srv = PanelServer(agent, host="127.0.0.1", port=0,
+                      rag_auto_paths=[kaynak], rag_sync_interval=0.05)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    _hazir_bekle(srv)
+    try:
+        deadline = time.time() + 3
+        while time.time() < deadline and not kb.search("ilkbenzersiz"):
+            time.sleep(0.03)
+        assert kb.search("ilkbenzersiz")
+
+        belge.write_text("ikincibenzersiz", encoding="utf-8")
+        deadline = time.time() + 3
+        while time.time() < deadline and not kb.search("ikincibenzersiz"):
+            time.sleep(0.03)
+        assert kb.search("ikincibenzersiz")
+
+        belge.unlink()
+        deadline = time.time() + 3
+        while time.time() < deadline and kb.search("ikincibenzersiz"):
+            time.sleep(0.03)
+        assert kb.search("ikincibenzersiz") == []
+    finally:
+        srv.shutdown()
 
 
 def test_the_diagnostic_tab_counts_real_cases():

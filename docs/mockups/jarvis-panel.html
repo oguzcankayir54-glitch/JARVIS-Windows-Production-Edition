@@ -236,6 +236,19 @@
   .cmd-tools button:hover,.fav-btn.on{color:var(--accent); border-color:rgba(var(--accent-rgb),.5)}
   .fav-btn{margin-left:5px; padding:2px 5px}
   .mempty{font-size:10px; color:var(--mute); padding:10px 0; line-height:1.6}
+  .rag-form{display:flex; gap:6px; flex:0 0 auto; margin-bottom:7px}
+  .rag-form input{min-width:0; flex:1; border:1px solid var(--line); border-radius:3px;
+    background:var(--bg-3); color:var(--text); padding:7px 8px; font:10px var(--f-mono)}
+  .rag-form input:focus{outline:none; border-color:rgba(var(--accent-rgb),.6)}
+  .rag-results{flex:1; min-height:0; overflow-y:auto; display:flex;
+    flex-direction:column; gap:6px}
+  .rag-hit{border:1px solid var(--line); border-radius:3px; padding:7px;
+    background:rgba(var(--accent-rgb),.025)}
+  .rag-hit .src{font:9px var(--f-mono); color:var(--accent); overflow-wrap:anywhere}
+  .rag-hit .why{float:right; color:var(--mute); margin-left:6px}
+  .rag-hit .title{font-size:10px; color:var(--text); margin-top:4px}
+  .rag-hit .excerpt{font:9.5px/1.45 var(--f-mono); color:var(--dim); margin-top:4px;
+    white-space:pre-wrap; overflow-wrap:anywhere}
 
   /* diagnostic */
   .case-head{display:flex; align-items:center; gap:8px; margin-bottom:9px}
@@ -421,6 +434,19 @@
             <div class="panel-h"><h2 id="veriBaslik">Modül</h2><span class="tag" id="veriTag">—</span></div>
             <div class="panel-b"><div class="mrows" id="veriGovde"></div></div>
           </div>
+          <div id="bilgiView" hidden>
+            <div class="panel-h"><h2>Bilgi Tabanı</h2><span class="tag" id="bilgiTag">—</span></div>
+            <div class="panel-b">
+              <form class="rag-form" id="bilgiForm">
+                <input id="bilgiSorgu" maxlength="500" autocomplete="off"
+                       placeholder="Belgelerde ve kodda ara…">
+                <button class="sbtn" type="submit" id="bilgiAraBtn">ARA</button>
+              </form>
+              <div class="rag-results" id="bilgiSonuclar">
+                <div class="mempty">Bir ayarı, hata mesajını veya proje kararını arayın.</div>
+              </div>
+            </div>
+          </div>
           <div id="topoView">
           <div class="panel-h"><h2>Donanım Haritası</h2><span class="tag">Harita</span></div>
           <div class="panel-b">
@@ -602,7 +628,7 @@
     ses:     {ad:"Ses"},
     teshis:  {ad:"Teşhis"},
     hafiza:  {ad:"Hafıza"},
-    bilgi:   {ad:"Bilgi Tabanı"},
+    bilgi:   {ad:"Bilgi Tabanı", gorunum:"bilgiView"},
     araclar: {ad:"Araçlar"},
     komutlar:{ad:"Kolay Komutlar"},
     saglik:  {ad:"Sağlık Merkezi"},
@@ -647,12 +673,13 @@
     if(!tanim) return;
     aktifModul = anahtar;
     // Önce hepsini gizle, sonra ilgiliyi aç: kutu aynı kalır, içerik değişir.
-    ["topoView","visionView","veriView"].forEach(id=>{
+    ["topoView","visionView","veriView","bilgiView"].forEach(id=>{
       const el = document.getElementById(id);
       if(el) el.hidden = true;
     });
     if(tanim.gorunum){
       document.getElementById(tanim.gorunum).hidden = false;
+      if(anahtar === "bilgi") bilgiDurumCiz();
       return;
     }
     const govde = document.getElementById("veriGovde");
@@ -750,6 +777,61 @@
     document.querySelectorAll(".mod").forEach(m=>m.classList.remove("active"));
     e.target.classList.add("active");
     modulCiz(e.target.dataset.modul);
+  });
+
+  function bilgiDurumCiz(){
+    const veri = modulVeri && modulVeri.bilgi;
+    const tag = document.getElementById("bilgiTag");
+    if(!tag) return;
+    tag.textContent = veri ? (veri.ozet || "—") : "canlı veri yok";
+    tag.style.color = veri && veri.durum === "hazir" ? "" : "var(--mute)";
+  }
+
+  document.getElementById("bilgiForm").addEventListener("submit", async e=>{
+    e.preventDefault();
+    const input = document.getElementById("bilgiSorgu");
+    const btn = document.getElementById("bilgiAraBtn");
+    const alan = document.getElementById("bilgiSonuclar");
+    const sorgu = input.value.trim();
+    if(!sorgu) return;
+    btn.disabled = true; btn.textContent = "ARANIYOR";
+    alan.replaceChildren();
+    const bekle = document.createElement("div");
+    bekle.className = "mempty"; bekle.textContent = "Bilgi tabanı aranıyor…";
+    alan.appendChild(bekle);
+    try{
+      const res = await fetch("/bilgi/ara", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({sorgu, limit:5})
+      });
+      const d = await res.json();
+      if(!res.ok) throw new Error(d.error || "arama başarısız");
+      alan.replaceChildren();
+      document.getElementById("bilgiTag").textContent =
+        d.adet + " sonuç · " + d.sure_ms + " ms";
+      if(!d.sonuclar.length){
+        const bos = document.createElement("div");
+        bos.className = "mempty";
+        bos.textContent = "Bu sorguyla eşleşen bir belge bulunamadı.";
+        alan.appendChild(bos);
+      }
+      d.sonuclar.forEach(h=>{
+        const kart = document.createElement("div"); kart.className = "rag-hit";
+        const src = document.createElement("div"); src.className = "src";
+        const why = document.createElement("span"); why.className = "why";
+        why.textContent = h.neden || "eşleşme";
+        src.textContent = h.kaynak; src.appendChild(why);
+        const baslik = document.createElement("div"); baslik.className = "title";
+        baslik.textContent = h.baslik || "Belge parçası";
+        const metin = document.createElement("div"); metin.className = "excerpt";
+        metin.textContent = h.metin;
+        kart.append(src, baslik, metin); alan.appendChild(kart);
+      });
+    }catch(err){
+      alan.replaceChildren();
+      const hata = document.createElement("div"); hata.className = "mempty";
+      hata.textContent = "Arama yapılamadı: " + err.message; alan.appendChild(hata);
+    }finally{ btn.disabled = false; btn.textContent = "ARA"; }
   });
   function tick(){ document.getElementById("clock").textContent=new Date().toLocaleTimeString("tr-TR"); }
   tick(); setInterval(tick,1000);
@@ -1475,7 +1557,8 @@
       const res = await fetch("/moduller");
       if(!res.ok) return;
       modulVeri = await res.json();
-      if(!MODULLER[aktifModul] || !MODULLER[aktifModul].gorunum) modulCiz(aktifModul);
+      if(aktifModul === "bilgi") bilgiDurumCiz();
+      else if(!MODULLER[aktifModul] || !MODULLER[aktifModul].gorunum) modulCiz(aktifModul);
     }catch(_){ /* panel bu yüzden bozulmamalı */ }
   }
   modulleriYenile();
@@ -1755,6 +1838,7 @@
   }
   function setText(id, v) { const el = $(id); if (el) el.textContent = v; }
   function dimRow(id) { const el = $(id); if (el && el.closest(".st")) el.closest(".st").classList.add("off"); }
+  function undimRow(id) { const el = $(id); if (el && el.closest(".st")) el.closest(".st").classList.remove("off"); }
   function markDemo(id, label) {
     const el = $(id);
     if (!el) return;
@@ -1810,6 +1894,7 @@
         // "1.284 parça" yazıp anlam aramasının kapalı olduğunu gizlemek
         // panelin uydurmama kuralına aykırı olurdu.
         if (m.rag) {
+          undimRow("bmRag");
           setText("bmRag", m.rag_parca.toLocaleString("tr-TR") + " parça"
                            + (m.rag_anlam ? "" : " · kelime"));
         } else { setText("bmRag", "yok"); dimRow("bmRag"); }
@@ -1873,6 +1958,9 @@
             + "Sizi tanımaz, söylediğinizi anlamaz, yalnızca birkaç kalıp cevap verir. "
             + "Gerçek modele geçmek için .env içine JARVIS_LLM_PROVIDER=ollama.");
         }
+        // Arka plan eşitlemesi bitince başlangıçta alınmış modül sayımlarını
+        // yenile. Meta olayı küçük; belge listesi yalnızca gerektiğinde gelir.
+        if (m.rag_sync && m.rag_sync.durum !== "çalışıyor") modulleriYenile();
       } catch (_) {}
     });
 

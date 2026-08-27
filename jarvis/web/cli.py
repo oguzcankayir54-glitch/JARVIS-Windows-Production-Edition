@@ -155,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
                          object_vision=object_vision, ocr=ocr,
                          face_recognizer=face_recognizer,
                          sesli_onay_tabani=sesli_taban(cfg.sesli_taban),
+                         rag_auto_paths=cfg.rag_auto_paths,
+                         rag_sync_interval=cfg.rag_sync_interval,
                          llm_uyari=_llm_eksik)
 
     url = f"http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{args.port}"

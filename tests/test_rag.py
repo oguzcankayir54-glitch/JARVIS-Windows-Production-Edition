@@ -232,6 +232,60 @@ def test_reindexing_unchanged_text_does_no_work(kb):
     assert kb.embedder.cagri == once, "değişmeyen belge yeniden gömülmemeli"
 
 
+def test_sync_updates_changed_files_and_forgets_deleted_ones(kb, tmp_path):
+    kalan = tmp_path / "kalan.md"
+    silinen = tmp_path / "silinen.md"
+    kalan.write_text("# İlk\n\neski içerik\n", encoding="utf-8")
+    silinen.write_text("# Sil\n\nbenzersizsilinen\n", encoding="utf-8")
+    ilk = kb.index_path(tmp_path, silinenleri_unut=True)
+    assert ilk.eklenen == 2 and ilk.silinen == 0
+
+    kalan.write_text("# Son\n\nyeni içerik\n", encoding="utf-8")
+    silinen.unlink()
+    ikinci = kb.index_path(tmp_path, silinenleri_unut=True)
+
+    assert ikinci.guncellenen == 1 and ikinci.silinen == 1
+    assert kb.search("benzersizsilinen") == []
+    assert kb.search("yeni içerik")
+
+
+def test_sync_never_keeps_a_file_that_became_secret(kb, tmp_path):
+    belge = tmp_path / "not.md"
+    belge.write_text("güvenli benzersizmetin", encoding="utf-8")
+    kb.index_path(tmp_path, silinenleri_unut=True)
+    belge.rename(tmp_path / "credentials.json")
+
+    rapor = kb.index_path(tmp_path, silinenleri_unut=True)
+
+    assert rapor.silinen == 1
+    assert kb.search("benzersizmetin") == []
+
+
+def test_sync_forgets_a_configured_file_after_it_is_deleted(kb, tmp_path):
+    belge = tmp_path / "tek.md"
+    belge.write_text("teksilinenbenzersiz", encoding="utf-8")
+    kb.index_path(belge, silinenleri_unut=True)
+    belge.unlink()
+
+    rapor = kb.index_path(belge, silinenleri_unut=True)
+
+    assert rapor.silinen == 1
+    assert kb.search("teksilinenbenzersiz") == []
+
+
+def test_sync_does_not_follow_symlinks_outside_the_allowed_root(kb, tmp_path):
+    dis = tmp_path / "dis.md"
+    dis.write_text("disaridakibenzersiz", encoding="utf-8")
+    kok = tmp_path / "kok"
+    kok.mkdir()
+    (kok / "masum.md").symlink_to(dis)
+
+    rapor = kb.index_path(kok, silinenleri_unut=True)
+
+    assert rapor.sebepler["bağlantı"] == 1
+    assert kb.search("disaridakibenzersiz") == []
+
+
 def test_changed_text_replaces_the_old_chunks(kb):
     kb.index_text("n.md", "# Bir\n\neski içerik\n")
     kb.index_text("n.md", "# Bir\n\nyeni içerik\n")

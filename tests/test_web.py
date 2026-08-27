@@ -91,6 +91,33 @@ def test_empty_ask_rejected(server):
     assert exc.value.code == 400
 
 
+def test_custom_command_can_be_taught_and_used(server):
+    status, body = _post(server, "/komut-ogret", {
+        "phrase": "hızlı kontrol", "expansion": "sistem durumu nedir?"})
+    assert status == 200 and body["saved"] is True
+    status, body = _post(server, "/ask", {"text": "Hızlı kontrol"})
+    assert status == 200
+    assert "CPU" in body["answer"] or "RAM" in body["answer"]
+
+
+def test_command_analysis_resolves_custom_alias(server):
+    _post(server, "/komut-ogret", {
+        "phrase": "hızlı kontrol", "expansion": "sistem durumu nedir?"})
+    status, body = _post(server, "/komut-analiz", {"text": "HIZLI KONTROL"})
+    assert status == 200
+    assert body["intent"] == "SYSTEM_MONITOR"
+    assert body["risk"] == "LOW"
+    assert body["resolved"] == "sistem durumu nedir?"
+
+
+def test_modules_expose_health_logs_and_personal_commands(server):
+    server.agent.ask("merhaba")
+    modules = server.modul_verisi()
+    assert modules["saglik"]["satirlar"]
+    assert modules["kayitlar"]["satirlar"]
+    assert "komutlar" in modules
+
+
 def test_unknown_route_404(server):
     with pytest.raises(urllib.error.HTTPError) as exc:
         _get(server, "/gizli")
@@ -522,7 +549,8 @@ def test_the_floor_setting_can_never_loosen_the_gate(ayar):
 # panelin ilk sürümünden beri aynı: ölçmediği bir sayıyı göstermez.
 
 MODUL_ADLARI = {"sistem", "ses", "goruntu", "teshis",
-                "hafiza", "bilgi", "araclar", "ajanda"}
+                "hafiza", "bilgi", "araclar", "komutlar", "saglik",
+                "kayitlar", "ajanda"}
 
 
 def test_every_module_tab_has_data(server):

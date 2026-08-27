@@ -224,6 +224,17 @@
   .mrow .v{font-family:var(--f-mono); font-size:9.5px; color:var(--text);
     margin-left:auto; text-align:right; white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis; max-width:48%}
+  .mrow.komut-row{cursor:pointer; border-radius:3px; padding-left:5px; padding-right:5px}
+  .mrow.komut-row:hover{background:rgba(var(--accent-rgb),.08)}
+  .mrow.komut-row:hover .v{color:var(--accent)}
+  .cmd-tools{display:grid; grid-template-columns:1fr auto auto; gap:5px; padding-bottom:7px;
+    position:sticky; top:0; z-index:2; background:var(--bg-2)}
+  .cmd-tools input,.cmd-tools select{min-width:0; border:1px solid var(--line); border-radius:3px;
+    background:var(--bg-3); color:var(--text); font:9px var(--f-mono); padding:6px}
+  .cmd-tools button,.fav-btn{border:1px solid var(--line); border-radius:3px; background:transparent;
+    color:var(--dim); font:9px var(--f-mono); cursor:pointer; padding:5px 7px}
+  .cmd-tools button:hover,.fav-btn.on{color:var(--accent); border-color:rgba(var(--accent-rgb),.5)}
+  .fav-btn{margin-left:5px; padding:2px 5px}
   .mempty{font-size:10px; color:var(--mute); padding:10px 0; line-height:1.6}
 
   /* diagnostic */
@@ -523,7 +534,7 @@
       <button class="mod active" data-modul="donanim">Donanım</button><button class="mod" data-modul="sistem">Sistem</button>
       <button class="mod" data-modul="goruntu">Görüntü</button><button class="mod" data-modul="ses">Ses</button>
       <button class="mod" data-modul="teshis">Teşhis</button><button class="mod" data-modul="hafiza">Hafıza</button>
-      <button class="mod" data-modul="bilgi">Bilgi</button><button class="mod" data-modul="araclar">Araçlar</button><button class="mod" data-modul="ajanda">Ajanda</button>
+      <button class="mod" data-modul="bilgi">Bilgi</button><button class="mod" data-modul="araclar">Araçlar</button><button class="mod" data-modul="komutlar">Komutlar</button><button class="mod" data-modul="saglik">Sağlık</button><button class="mod" data-modul="kayitlar">Kayıtlar</button><button class="mod" data-modul="ajanda">Ajanda</button>
     </div>
     <div class="sep"></div>
     <span class="demolbl">◈ Demo Durum</span>
@@ -593,10 +604,22 @@
     hafiza:  {ad:"Hafıza"},
     bilgi:   {ad:"Bilgi Tabanı"},
     araclar: {ad:"Araçlar"},
+    komutlar:{ad:"Kolay Komutlar"},
+    saglik:  {ad:"Sağlık Merkezi"},
+    kayitlar:{ad:"İşlem · Hata Kayıtları"},
     ajanda:  {ad:"Ajanda"},
   };
   let modulVeri = null;      // /moduller cevabı; canlı modda dolar
   let aktifModul = "donanim";
+  const FAVORI_ANAHTAR = "jarvis-komut-favorileri-v1";
+  const GECMIS_ANAHTAR = "jarvis-komut-gecmisi-v1";
+  function yerelListe(anahtar){
+    try{ const v=JSON.parse(localStorage.getItem(anahtar)||"[]"); return Array.isArray(v)?v:[]; }
+    catch(_){ return []; }
+  }
+  function yerelYaz(anahtar, liste){
+    try{ localStorage.setItem(anahtar,JSON.stringify(liste)); }catch(_){}
+  }
 
   // Kutunun boyu, donanım haritasının doğal boyuna sabitlenir. Sebep somut:
   // "Araçlar" 24 satır, "Ajanda" 1 satır — kutu içeriğe göre uzasaydı ızgara
@@ -658,16 +681,68 @@
       govde.appendChild(bos);
       return;
     }
-    veri.satirlar.forEach(s=>{
+    let satirlar = veri.satirlar;
+    let filtrele = null;
+    if(anahtar === "komutlar"){
+      const gecmis = yerelListe(GECMIS_ANAHTAR).map(x=>({ad:"Son Kullanılan",deger:x,
+        aciklama:"Yakın zamanda çalıştırıldı",komut:x,gecmis:"1"}));
+      satirlar = [...gecmis, ...satirlar];
+      const arac = document.createElement("div"); arac.className="cmd-tools";
+      const ara=document.createElement("input"); ara.placeholder="Komut ara…"; ara.setAttribute("aria-label","Komut ara");
+      const kat=document.createElement("select");
+      ["Tümü",...new Set(satirlar.map(x=>x.ad))].forEach(ad=>{const o=document.createElement("option");o.textContent=ad;kat.appendChild(o)});
+      const ogret=document.createElement("button"); ogret.type="button"; ogret.textContent="+ ÖĞRET";
+      arac.append(ara,kat,ogret); govde.appendChild(arac);
+      filtrele=()=>{
+        const q=ara.value.toLocaleLowerCase("tr-TR"), sec=kat.value;
+        govde.querySelectorAll(".komut-row").forEach(row=>{
+          row.hidden=!!((q&&!row.dataset.search.includes(q))||(sec!=="Tümü"&&row.dataset.category!==sec));
+        });
+      };
+      ara.addEventListener("input",filtrele); kat.addEventListener("change",filtrele);
+      ogret.onclick=async()=>{
+        const phrase=prompt("JARVIS'e söyleyeceğiniz kısa komut:"); if(!phrase)return;
+        const expansion=prompt("Bu komutun gerçek karşılığı:\nÖrnek: Sistem durumunu göster."); if(!expansion)return;
+        const res=await fetch("/komut-ogret",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({phrase,expansion})});
+        const data=await res.json().catch(()=>({}));
+        if(!res.ok){addNotice("Komut öğretilemedi: "+(data.error||res.status));return;}
+        addNotice("Kişisel komut kaydedildi: "+phrase); await modulleriYenile();
+      };
+    }
+    satirlar.forEach(s=>{
       const satir = document.createElement("div");
       satir.className = "mrow";
+      satir.dataset.category=s.ad||"";
+      satir.dataset.search=((s.ad||"")+" "+(s.deger||"")+" "+(s.aciklama||"")).toLocaleLowerCase("tr-TR");
       const k = document.createElement("span");
       k.className = "k"; k.textContent = s.ad; k.title = s.ad;
       const v = document.createElement("span");
       v.className = "v"; v.textContent = s.deger; v.title = s.deger;
       satir.append(k, v);
+      if(s.aciklama && !s.komut) satir.title=s.aciklama;
+      if(s.komut){
+        satir.classList.add("komut-row");
+        satir.title = (s.aciklama || "") + " · Yazı kutusuna almak için tıklayın";
+        satir.tabIndex = 0;
+        const sec = () => {
+          const kutu = document.getElementById("askInput");
+          if(!kutu) return;
+          kutu.value = s.komut;
+          kutu.focus();
+        };
+        satir.addEventListener("click", sec);
+        satir.addEventListener("keydown", e => {
+          if(e.key === "Enter" || e.key === " "){ e.preventDefault(); sec(); }
+        });
+        const fav=document.createElement("button"); fav.type="button"; fav.className="fav-btn";
+        const favlari=()=>yerelListe(FAVORI_ANAHTAR); const boya=()=>{const on=favlari().includes(s.komut);fav.classList.toggle("on",on);fav.textContent=on?"★":"☆";fav.title=on?"Favorilerden çıkar":"Favorilere ekle"};
+        fav.onclick=e=>{e.stopPropagation();let f=favlari();f=f.includes(s.komut)?f.filter(x=>x!==s.komut):[...f,s.komut];yerelYaz(FAVORI_ANAHTAR,f);boya()};
+        boya(); satir.appendChild(fav);
+      }
       govde.appendChild(satir);
     });
+    if(filtrele) filtrele();
   }
 
   document.getElementById("modules").addEventListener("click",e=>{
@@ -856,13 +931,29 @@
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
+    let approveHigh=false;
+    try{
+      const analizRes=await fetch("/komut-analiz",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text})});
+      const analiz=await analizRes.json();
+      if(analiz.risk==="CRITICAL"){
+        addMessage("assistant","Kritik işlem panelden çalıştırılmaz; yazılı CLI onayı gerekir."); return;
+      }
+      if(analiz.risk==="HIGH"||analiz.needs_confirmation){
+        const ozet=`Niyet: ${analiz.intent}\nRisk: ${analiz.risk}\n${analiz.reason||"Sistem değişikliği"}`;
+        if(!confirm(ozet+"\n\nBu işlemi bir kez onaylıyor musunuz?")) return;
+        approveHigh=true;
+      }
+    }catch(_){ /* analiz servisi yoksa mevcut PermissionManager yine korur */ }
+    const onceki = yerelListe(GECMIS_ANAHTAR).filter(x=>x!==text);
+    yerelYaz(GECMIS_ANAHTAR, [text,...onceki].slice(0,10));
     input.value = "";
     btn.disabled = true;
     try {
       const res = await fetch("/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, approve_high: approveHigh }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

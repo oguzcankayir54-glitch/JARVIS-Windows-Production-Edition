@@ -59,6 +59,7 @@ jarvis-panel = "jarvis.web.cli:main"
 jarvis-tanit = "jarvis.core.identity_cli:main"
 jarvis-karsilastir = "jarvis.eval.cli:main"
 jarvis-bilgi = "jarvis.rag.cli:main"
+jarvis-yedek = "jarvis.maintenance.backup:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

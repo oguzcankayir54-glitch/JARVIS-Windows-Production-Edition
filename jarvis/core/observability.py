@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..maintenance.logs import rotate_if_needed
+
 
 _SECRET_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
@@ -85,9 +87,12 @@ class RequestTrace:
 class RequestTraceLog:
     """Append-only JSONL trace log; logging failures never break a turn."""
 
-    def __init__(self, path: Path | None = None, *, include_user_text: bool = False) -> None:
+    def __init__(self, path: Path | None = None, *, include_user_text: bool = False,
+                 max_bytes: int = 10 * 1024 * 1024, backup_count: int = 5) -> None:
         self.path = path
         self.include_user_text = bool(include_user_text)
+        self.max_bytes = max(0, int(max_bytes))
+        self.backup_count = max(0, int(backup_count))
         self.entries: list[RequestTrace] = []
         if self.path is not None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -138,8 +143,12 @@ class RequestTraceLog:
         self.entries.append(trace)
         if self.path is not None:
             try:
+                line = trace.to_json() + "\n"
+                rotate_if_needed(self.path, len(line.encode("utf-8")),
+                                 max_bytes=self.max_bytes,
+                                 backup_count=self.backup_count)
                 with self.path.open("a", encoding="utf-8") as fh:
-                    fh.write(trace.to_json() + "\n")
+                    fh.write(line)
             except OSError:
                 pass
         return trace

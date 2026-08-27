@@ -288,6 +288,11 @@ class Config:
     # Request tracing keeps raw user text off disk by default.  Enable only on
     # a development machine where that privacy trade-off is intentional.
     trace_user_text: bool = field(default_factory=lambda: _bool("JARVIS_TRACE_USER_TEXT", False))
+    # Audit ve istek logları sınırsız büyümez. 0 rotation'ı kapatır.
+    log_max_bytes: int = field(default_factory=lambda: max(
+        0, int(_float("JARVIS_LOG_MAX_BYTES", 10 * 1024 * 1024))))
+    log_backup_count: int = field(default_factory=lambda: max(
+        0, int(_float("JARVIS_LOG_BACKUP_COUNT", 5))))
 
     @property
     def audit_log_path(self) -> Path:

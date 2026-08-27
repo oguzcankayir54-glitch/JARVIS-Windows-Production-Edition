@@ -86,16 +86,14 @@ def test_the_identity_seed_ships_with_the_package():
 def test_the_windows_installer_ships_with_the_repository():
     """ZIP indirip kuracak birinin ihtiyacı olan her şey depoda olmalı."""
     for gereken in ("windows/Kur.cmd", "windows/JARVIS.exe", "windows/jarvis.ico",
-                    "windows/jarvis.ini", "windows/src/kur-windows.ps1"):
+                    "windows/jarvis.ini", "windows/src/kur-windows.ps1",
+                    "windows/src/watchdog.ps1"):
         assert (KOK / gereken).is_file(), f"{gereken} depoda yok"
 
 
 # ---------------- indirme yonergesi ----------------
-# "Nereden indirecegimi bulamiyorum" diye geri geldi, ve ilk cevap YANLISTI:
-# verilen adres tarayicida 404 verdi. Sebebi ogrenildi — depo ozel, ve ozel
-# depolarda ZIP adresi kisiye ozel bir jeton tasiyor; onu yalnizca GitHub'in
-# kendi dugmesi uretiyor. Jetonla yapilan dogrulama 200 donduğu icin
-# yaniltici olmustu: tarayici o jetonu gondermiyor.
+# İndirme rehberi artık public Production Edition Release paketini göstermeli;
+# eski özel depo ve geliştirme dalı kullanıcıya sunulmamalı.
 
 #: Elle yazildiginda calismayan bicimler. Hicbir belgede onerilmemeli.
 CALISMAYAN = (
@@ -116,10 +114,12 @@ def test_the_download_guide_exists():
 
 
 def test_the_guide_gives_the_button_path_not_a_dead_link():
-    """Calisan tek yol GitHub'in kendi dugmesi."""
+    """Hazır EXE birincil, kaynak ZIP ikincil yol olmalı."""
     metin = (KOK / "INDIRME.md").read_text(encoding="utf-8")
     assert "Download ZIP" in metin
-    assert "claude/jarvis-architecture-analysis-40i73f" in metin, "dal adi yazmali"
+    assert "JARVIS-Setup-2.0.1.exe" in metin
+    assert "feat/complete-project-sync" in metin
+    assert "oguzcankayir54-glitch/jarvis" not in metin
 
 
 def test_no_document_offers_a_link_that_does_not_work():
@@ -141,7 +141,7 @@ def test_the_install_docs_point_at_the_download_guide(belge):
 
 def test_the_double_clickable_installer_is_named_in_the_guide():
     metin = (KOK / "INDIRME.md").read_text(encoding="utf-8")
-    assert "Kur.cmd" in metin
+    assert "JARVIS-Setup-2.0.1.exe" in metin and "Kur.cmd" in metin
     # Ikinci asistan kaldirildi: olmayan bir dosyaya cift tiklatmak,
     # kurulumun ilk adiminda takilmak demek olurdu.
     assert "Kur-Friday.cmd" not in metin
@@ -150,5 +150,5 @@ def test_the_double_clickable_installer_is_named_in_the_guide():
 def test_the_guide_says_what_survives_an_update():
     """"Guncellersem ayarlarim gider mi" sorusu sorulmadan cevaplanmali."""
     metin = (KOK / "INDIRME.md").read_text(encoding="utf-8")
-    for korunan in (".env", "jeton", ".venv"):
+    for korunan in (".env", "jeton", ".venv", "jarvis-yedek"):
         assert korunan in metin

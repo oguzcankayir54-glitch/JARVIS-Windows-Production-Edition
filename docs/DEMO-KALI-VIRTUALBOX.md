@@ -70,9 +70,8 @@ Kali içinde terminal aç:
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip git
 
-git clone https://github.com/oguzcankayir54-glitch/jarvis.git
-cd jarvis
-git checkout claude/jarvis-architecture-analysis-40i73f
+git clone --branch feat/complete-project-sync https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition.git
+cd JARVIS-Windows-Production-Edition
 ./kurulum.sh
 ```
 

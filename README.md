@@ -118,9 +118,9 @@ ollama pull bge-m3
 
 ### Kurulum adımları
 
-1. GitHub sayfasında **Code → Download ZIP** seçeneğini kullanın.
-2. ZIP dosyasını normal bir klasöre çıkartın.
-3. `windows\Kur.cmd` dosyasına çift tıklayın.
+1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.2/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
+2. Dosyaya çift tıklayıp kurulum sihirbazını tamamlayın.
+3. Kaynak kurulum seçeneği için `INDIRME.md` belgesine bakın.
 4. Kurucu projeyi `%LOCALAPPDATA%\Programs\JARVIS` altına kurar.
 5. Masaüstündeki **J.A.R.V.I.S.** simgesinden paneli başlatın.
 
@@ -257,11 +257,11 @@ docs/           Mimari, donanım ve kullanım belgeleri
 ## Mevcut sınırlamalar
 
 - İlk üretim kurulumu ve donanım kabul testleri hedef Windows sisteminde yapılmalıdır
-- Hazır, dijital imzalı Setup EXE henüz yayınlanmamıştır; kurulum `Kur.cmd` ile yapılır
+- Hazır Setup EXE GitHub Releases üzerinden yayınlanmaktadır; paket henüz kod imzalı değildir
 - iPhone istemcisi ve telefon mikrofonu için HTTPS akışı tamamlanmamıştır
 - Ayrı müşteri bilgisayarına bağlanan uzak teşhis ajanı henüz yoktur
 - Teşhis playbook/karar ağacı geliştirmesi devam etmektedir
-- Otomatik yedekleme, log rotation ve servis/watchdog henüz eklenmemiştir
+- Watchdog, doğrulanmış yedekleme/geri yükleme ve log rotation hazırdır
 - Windows SmartScreen için kod imzalama yapılmamıştır
 
 ## Yol haritası
@@ -275,7 +275,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - 🔸 Temiz Windows donanım kabul testleri
 - 🔸 Teşhis playbook ve karar ağacı
 - ✅ RAG panel yönetimi ve otomatik yeniden indeksleme
-- 🔸 Otomatik yedekleme ve kurtarma
+- ✅ Yedekleme, geri yükleme, log rotation ve Windows watchdog
 - 🔸 HTTPS üzerinden telefon/iPhone istemcisi
 - 🔸 Uzak hedef makine teşhis ajanı
 - 🔸 Proaktif bildirim ve ajanda
@@ -306,6 +306,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - [Kamera](docs/KAMERA.md)
 - [Model karşılaştırma](docs/MODEL-KARSILASTIRMA.md)
 - [Gereksinim ve risk analizi](docs/REQUIREMENTS_ANALYSIS.md)
+- [Yedekleme ve watchdog](docs/YEDEKLEME-VE-WATCHDOG.md)
 
 ## Kurulum yolları
 

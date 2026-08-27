@@ -89,9 +89,11 @@ def build_agent(
 ) -> Agent:
     cfg = cfg or load_config()
 
-    audit = AuditLog(cfg.audit_log_path)
+    audit = AuditLog(cfg.audit_log_path, max_bytes=cfg.log_max_bytes,
+                     backup_count=cfg.log_backup_count)
     trace_log = RequestTraceLog(
-        cfg.request_trace_log_path, include_user_text=cfg.trace_user_text
+        cfg.request_trace_log_path, include_user_text=cfg.trace_user_text,
+        max_bytes=cfg.log_max_bytes, backup_count=cfg.log_backup_count,
     )
     permissions = PermissionManager(audit=audit, approver=approver, non_interactive=cfg.non_interactive)
 

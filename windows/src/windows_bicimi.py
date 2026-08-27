@@ -28,6 +28,7 @@ WINDOWS = BURASI.parent
 DOSYALAR = (
     (WINDOWS / "src" / "kur.ps1", True),
     (WINDOWS / "src" / "kur-windows.ps1", True),
+    (WINDOWS / "src" / "watchdog.ps1", True),
     (WINDOWS / "Kur.cmd", False),
     (WINDOWS / "jarvis.ini", True),
 )

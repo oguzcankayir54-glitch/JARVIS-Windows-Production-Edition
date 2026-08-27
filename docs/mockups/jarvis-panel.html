@@ -224,6 +224,9 @@
   .mrow .v{font-family:var(--f-mono); font-size:9.5px; color:var(--text);
     margin-left:auto; text-align:right; white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis; max-width:48%}
+  .mrow.komut-row{cursor:pointer; border-radius:3px; padding-left:5px; padding-right:5px}
+  .mrow.komut-row:hover{background:rgba(var(--accent-rgb),.08)}
+  .mrow.komut-row:hover .v{color:var(--accent)}
   .mempty{font-size:10px; color:var(--mute); padding:10px 0; line-height:1.6}
 
   /* diagnostic */
@@ -523,7 +526,7 @@
       <button class="mod active" data-modul="donanim">Donanım</button><button class="mod" data-modul="sistem">Sistem</button>
       <button class="mod" data-modul="goruntu">Görüntü</button><button class="mod" data-modul="ses">Ses</button>
       <button class="mod" data-modul="teshis">Teşhis</button><button class="mod" data-modul="hafiza">Hafıza</button>
-      <button class="mod" data-modul="bilgi">Bilgi</button><button class="mod" data-modul="araclar">Araçlar</button><button class="mod" data-modul="ajanda">Ajanda</button>
+      <button class="mod" data-modul="bilgi">Bilgi</button><button class="mod" data-modul="araclar">Araçlar</button><button class="mod" data-modul="komutlar">Komutlar</button><button class="mod" data-modul="ajanda">Ajanda</button>
     </div>
     <div class="sep"></div>
     <span class="demolbl">◈ Demo Durum</span>
@@ -593,6 +596,7 @@
     hafiza:  {ad:"Hafıza"},
     bilgi:   {ad:"Bilgi Tabanı"},
     araclar: {ad:"Araçlar"},
+    komutlar:{ad:"Kolay Komutlar"},
     ajanda:  {ad:"Ajanda"},
   };
   let modulVeri = null;      // /moduller cevabı; canlı modda dolar
@@ -666,6 +670,21 @@
       const v = document.createElement("span");
       v.className = "v"; v.textContent = s.deger; v.title = s.deger;
       satir.append(k, v);
+      if(s.komut){
+        satir.classList.add("komut-row");
+        satir.title = (s.aciklama || "") + " · Yazı kutusuna almak için tıklayın";
+        satir.tabIndex = 0;
+        const sec = () => {
+          const kutu = document.getElementById("askInput");
+          if(!kutu) return;
+          kutu.value = s.komut;
+          kutu.focus();
+        };
+        satir.addEventListener("click", sec);
+        satir.addEventListener("keydown", e => {
+          if(e.key === "Enter" || e.key === " "){ e.preventDefault(); sec(); }
+        });
+      }
       govde.appendChild(satir);
     });
   }

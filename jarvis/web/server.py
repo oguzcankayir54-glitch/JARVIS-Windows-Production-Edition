@@ -39,6 +39,7 @@ from ..core.state import JarvisState
 from ..core.asistan import asistan_bul
 from ..security.permissions import RiskLevel
 from ..vision.detect import MAX_FRAME_BYTES, VisionError, build_vision
+from ..core.command_guide import panel_rows
 from ..vision.objects import build_object_vision
 from ..vision.ocr import build_ocr
 from ..vision.identity import build_face_recognizer
@@ -391,6 +392,14 @@ class PanelServer:
                         {"ad": "Makine", "deger": self.agent.machine or "(okunamadı)"},
                     ]}
 
+        def komutlar() -> dict[str, Any]:
+            satirlar = panel_rows()
+            return {
+                "durum": "hazir",
+                "ozet": f"{len(satirlar)} kolay örnek",
+                "satirlar": satirlar,
+            }
+
         return {
             "sistem": guvenli(sistem, {"durum": "yok", "ozet": "", "satirlar": []}),
             "ses": guvenli(ses, {"durum": "yok", "ozet": "", "satirlar": []}),
@@ -399,6 +408,7 @@ class PanelServer:
             "hafiza": guvenli(hafiza, {"durum": "yok", "ozet": "", "satirlar": []}),
             "bilgi": guvenli(bilgi, {"durum": "yok", "ozet": "", "satirlar": []}),
             "araclar": guvenli(araclar, {"durum": "yok", "ozet": "", "satirlar": []}),
+            "komutlar": guvenli(komutlar, {"durum": "yok", "ozet": "", "satirlar": []}),
             # Henüz yok. Uydurma veri yerine açıkça söylüyoruz.
             "ajanda": {"durum": "yok",
                        "ozet": "bu modül henüz yapılmadı",

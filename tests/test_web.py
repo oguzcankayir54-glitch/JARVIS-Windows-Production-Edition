@@ -522,7 +522,7 @@ def test_the_floor_setting_can_never_loosen_the_gate(ayar):
 # panelin ilk sürümünden beri aynı: ölçmediği bir sayıyı göstermez.
 
 MODUL_ADLARI = {"sistem", "ses", "goruntu", "teshis",
-                "hafiza", "bilgi", "araclar", "ajanda"}
+                "hafiza", "bilgi", "araclar", "komutlar", "ajanda"}
 
 
 def test_every_module_tab_has_data(server):

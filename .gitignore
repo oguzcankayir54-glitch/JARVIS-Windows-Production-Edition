@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Secrets & local data — never commit
+.env
+*.local
+~/.jarvis/
+.jarvis/
+.jarvis-lite-data/
+
+# Yerel aktarım paketleri
+jarvis-windows-*.zip
+:memory:*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Tanitim ciktilari — video ve ses depoya girmiyor
+tanitim/cikti*/
+tanitim/fontlar/

@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>J.A.R.V.I.S. — Görsel Analiz</title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+
+  :root{
+    --bg:#05090e; --ink:#cfeaf7; --dim:#7fa0b3; --mute:#4d6b80;
+    --cyan:#53d8ff; --amber:#ffc857; --green:#56e39f; --purple:#a875ff;
+    --mono:"SFMono-Regular",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{ background:var(--bg); color:var(--ink);
+        font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
+        -webkit-print-color-adjust:exact; print-color-adjust:exact }
+
+  .pg{ position:relative; width:297mm; height:210mm; overflow:hidden;
+       background:var(--bg); page-break-after:always }
+  .pg:last-child{ page-break-after:auto }
+
+  .full{ position:absolute; inset:0; width:100%; height:100%;
+         object-fit:cover; display:block }
+  .fit{ position:absolute; inset:0; width:100%; height:100%;
+        object-fit:contain; display:block }
+
+  /* okunabilirlik için alt karartma */
+  .scrim{ position:absolute; left:0; right:0; bottom:0; height:52%;
+    background:linear-gradient(180deg, rgba(5,9,14,0), rgba(5,9,14,.86) 62%, rgba(5,9,14,.97)) }
+  .scrim-t{ position:absolute; left:0; right:0; top:0; height:34%;
+    background:linear-gradient(180deg, rgba(5,9,14,.88), rgba(5,9,14,0)) }
+
+  .eyebrow{ font-size:8pt; letter-spacing:4.5px; text-transform:uppercase;
+            color:var(--cyan); font-weight:700 }
+  h1{ font-size:40pt; line-height:1.02; font-weight:700; letter-spacing:-1.4px; color:#fff }
+  h2{ font-size:19pt; font-weight:700; letter-spacing:-.4px; color:#fff }
+  .sub{ font-size:10.5pt; color:var(--dim); line-height:1.5 }
+  .kicker{ font-size:8pt; letter-spacing:3px; text-transform:uppercase; color:var(--mute) }
+
+  .blk{ position:absolute; z-index:5 }
+  .rule{ width:26mm; height:3px; background:var(--cyan); margin:5mm 0 }
+
+  /* köşe braketleri */
+  .cn{ position:absolute; width:11mm; height:11mm; border:1.5px solid rgba(83,216,255,.45); z-index:6 }
+  .cn.tl{ left:9mm; top:9mm; border-right:0; border-bottom:0 }
+  .cn.tr{ right:9mm; top:9mm; border-left:0; border-bottom:0 }
+  .cn.bl{ left:9mm; bottom:9mm; border-right:0; border-top:0 }
+  .cn.br{ right:9mm; bottom:9mm; border-left:0; border-top:0 }
+
+  /* sayfa numarası */
+  .pn{ position:absolute; right:12mm; bottom:9mm; font-family:var(--mono);
+       font-size:8pt; color:var(--mute); letter-spacing:2px; z-index:7 }
+
+  /* açıklama baloncuğu */
+  .note{ position:absolute; z-index:6; max-width:62mm;
+    background:rgba(6,12,18,.86); border:1px solid rgba(83,216,255,.32);
+    border-left:2.5px solid var(--cyan); padding:3mm 4mm; border-radius:2px }
+  .note .t{ font-size:7.6pt; letter-spacing:2.2px; text-transform:uppercase;
+            color:var(--cyan); font-weight:700; margin-bottom:1.4mm }
+  .note .d{ font-size:8.4pt; color:var(--ink); line-height:1.45 }
+  .note.amber{ border-left-color:var(--amber); border-color:rgba(255,200,87,.3) }
+  .note.amber .t{ color:var(--amber) }
+  .note.green{ border-left-color:var(--green); border-color:rgba(86,227,159,.3) }
+  .note.green .t{ color:var(--green) }
+
+  /* durum ızgarası */
+  .grid{ position:absolute; display:grid; gap:5mm }
+  .cell{ position:relative; border:1px solid rgba(83,216,255,.16); border-radius:2px;
+         overflow:hidden; background:#04070b }
+  .cell img{ width:100%; height:100%; object-fit:cover; display:block }
+  .cell .lab{ position:absolute; left:0; right:0; bottom:0; padding:2mm 3mm;
+    background:linear-gradient(180deg, rgba(5,9,14,0), rgba(5,9,14,.94));
+    font-size:8pt; letter-spacing:1.8px; font-weight:700 }
+  .cell .lab small{ display:block; font-size:6.6pt; letter-spacing:1.2px;
+                    color:var(--mute); font-weight:400; margin-top:.6mm }
+
+  /* numaralı işaretler */
+  .mk{ position:absolute; width:6.2mm; height:6.2mm; border-radius:50%;
+    background:rgba(5,12,18,.92); border:1.4px solid var(--cyan); color:var(--cyan);
+    font-family:var(--mono); font-size:8.4pt; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 2.6mm rgba(83,216,255,.10), 0 0 6mm rgba(83,216,255,.55);
+    transform:translate(-50%,-50%) }
+  .mk.green{ border-color:var(--green); color:var(--green);
+    box-shadow:0 0 0 2.6mm rgba(86,227,159,.10), 0 0 6mm rgba(86,227,159,.55) }
+  .mk.amber{ border-color:var(--amber); color:var(--amber);
+    box-shadow:0 0 0 2.6mm rgba(255,200,87,.10), 0 0 6mm rgba(255,200,87,.55) }
+
+  /* açıklama şeridi */
+  .lg{ position:relative; padding-top:7mm; font-size:7.6pt; line-height:1.46; color:var(--dim);
+       border-top:2px solid rgba(83,216,255,.5) }
+  .lg.green{ border-top-color:rgba(86,227,159,.55) }
+  .lg.amber{ border-top-color:rgba(255,200,87,.55) }
+  .lg b{ position:absolute; left:0; top:2.4mm; font-family:var(--mono);
+         font-size:9.5pt; color:var(--cyan) }
+  .lg.green b{ color:var(--green) } .lg.amber b{ color:var(--amber) }
+  .lg .h{ display:block; font-size:8.4pt; font-weight:700; color:#fff;
+          letter-spacing:.3px; margin:0 0 1.4mm 6mm }
+
+  /* iç yerleşim listesi */
+  .parts{ position:absolute; display:flex; flex-direction:column; gap:4.4mm }
+  .part{ position:relative; padding-left:9mm; font-size:8.2pt; line-height:1.35; color:var(--dim) }
+  .part b{ position:absolute; left:0; top:-.3mm; width:5.4mm; height:5.4mm; border-radius:50%;
+    border:1px solid var(--cyan); color:var(--cyan); font-family:var(--mono); font-size:7pt;
+    font-weight:700; display:flex; align-items:center; justify-content:center;
+    background:rgba(5,12,18,.9) }
+  .part .h{ display:block; font-size:9.4pt; font-weight:700; color:#fff; margin-bottom:.5mm }
+
+  /* şerit istatistik */
+  .stats{ position:absolute; display:flex; gap:9mm; z-index:6 }
+  .stat .v{ font-family:var(--mono); font-size:15pt; color:var(--cyan); font-weight:700 }
+  .stat .k{ font-size:7pt; letter-spacing:2.2px; text-transform:uppercase; color:var(--mute); margin-top:1mm }
+</style>
+</head>
+<body>
+
+<!-- ══════════ 1 · KAPAK ══════════ -->
+<div class="pg">
+  <img class="full" src="img/kule.png" alt="">
+  <div class="scrim"></div>
+  <span class="cn tl"></span><span class="cn tr"></span>
+  <span class="cn bl"></span><span class="cn br"></span>
+
+  <div class="blk" style="left:20mm;top:26mm">
+    <div class="eyebrow">J.A.R.V.I.S. · Kurulmuş Sistem</div>
+    <div class="rule"></div>
+    <h1>Görsel<br>Analiz</h1>
+  </div>
+
+  <div class="blk" style="left:20mm;bottom:24mm;max-width:120mm">
+    <div class="sub">Sistem kuruldu. Bu belge, makinenin nasıl göründüğünü ve
+      J.A.R.V.I.S.'in üzerinde nasıl çalıştığını gösterir.</div>
+  </div>
+
+  <div class="stats" style="right:20mm;bottom:24mm">
+    <div class="stat"><div class="v">24 GB</div><div class="k">VRAM</div></div>
+    <div class="stat"><div class="v">32B</div><div class="k">Yerel model</div></div>
+    <div class="stat"><div class="v">7</div><div class="k">Fan</div></div>
+    <div class="stat"><div class="v">0</div><div class="k">Buluta giden ses</div></div>
+  </div>
+  <div class="pn">01</div>
+</div>
+
+<!-- ══════════ 2 · KULE DETAY ══════════ -->
+<div class="pg">
+  <img class="full" src="img/kule.png" alt="" style="object-position:52% 45%">
+  <div class="scrim-t"></div>
+  <div class="blk" style="left:20mm;top:16mm">
+    <div class="kicker">01 · Makine</div>
+    <h2 style="margin-top:3mm">Cam vitrin</h2>
+  </div>
+
+  <div class="note" style="right:20mm;top:38mm">
+    <div class="t">Dikey kart + riser</div>
+    <div class="d">RTX 3090 anakart yuvasına oturmuyor; dik monte edilip
+      <b style="color:#fff">PCIe riser kablosuyla</b> x16 yuvasına bağlanıyor.
+      Fanları öne bakıyor, hava alması kolay ve vitrinin merkez parçası oluyor.</div>
+  </div>
+
+  <div class="note green" style="right:20mm;top:78mm">
+    <div class="t">Neural Core ekranı</div>
+    <div class="d">Kasa içindeki 7 inç panel, J.A.R.V.I.S.'in durumunu
+      camın arkasından gösteriyor. Makineye bakınca ne yaptığı anlaşılıyor.</div>
+  </div>
+
+  <div class="note amber" style="right:20mm;top:124mm">
+    <div class="t">Pozitif basınç</div>
+    <div class="d">5 giriş, 2 çıkış fanı. Hava yalnızca filtreli girişlerden
+      girer — toz camın arkasında birikmez.</div>
+  </div>
+  <div class="pn">02</div>
+</div>
+
+<!-- ══════════ 3 · İÇ YERLEŞİM ══════════ -->
+<div class="pg">
+  <div class="blk" style="left:14mm;top:11mm">
+    <div class="kicker">02 · İç yerleşim</div>
+    <h2 style="margin-top:2.5mm;font-size:17pt">Camın arkasında ne var</h2>
+  </div>
+
+  <div style="position:absolute;left:16mm;top:28mm;width:120mm;height:158mm;
+       border:1px solid rgba(83,216,255,.18);border-radius:2px;overflow:hidden;background:#04070b">
+    <img src="img/kule-detay.png" style="width:100%;height:100%;object-fit:cover;display:block">
+    <div class="mk" style="left:43.3%;top:24.7%">1</div>
+    <div class="mk" style="left:68.2%;top:30.2%">2</div>
+    <div class="mk" style="left:83.7%;top:26.1%">3</div>
+    <div class="mk" style="left:43.3%;top:54.6%">4</div>
+    <div class="mk green" style="left:54.7%;top:44.4%">5</div>
+    <div class="mk" style="left:67.1%;top:50.6%">6</div>
+    <div class="mk" style="left:86.8%;top:49.2%">7</div>
+    <div class="mk" style="left:69.2%;top:13.8%">8</div>
+    <div class="mk amber" style="left:78.5%;top:83.2%">9</div>
+    <div class="mk amber" style="left:43.3%;top:83.2%">10</div>
+  </div>
+
+  <div class="parts" style="left:150mm;top:34mm;width:132mm">
+    <div class="part"><b>1</b><span class="h">Neural Core ekranı</span>7 inç panel · durum göstergesi</div>
+    <div class="part"><b>2</b><span class="h">İşlemci + AIO pompası</span>Ryzen 7 5800X · ışıklı blok</div>
+    <div class="part"><b>3</b><span class="h">RAM · 4 çubuk</span>64 GB DDR4 · aydınlatmalı</div>
+    <div class="part"><b>4</b><span class="h">Ekran kartı</span>RTX 3090 24 GB · dikey, 3 fan</div>
+    <div class="part"><b>5</b><span class="h">PCIe riser kablosu</span>Karttan x16 yuvasına</div>
+    <div class="part"><b>6</b><span class="h">M.2 SSD</span>2 TB NVMe · soğutucu plakalı</div>
+    <div class="part"><b>7</b><span class="h">Chipset soğutucusu</span>Yonga seti bloğu</div>
+    <div class="part"><b>8</b><span class="h">AIO hortumları</span>Pompadan üst radyatöre</div>
+    <div class="part"><b>9</b><span class="h">Güç kaynağı</span>850 W Gold · örtü altında</div>
+    <div class="part"><b>10</b><span class="h">Alt giriş fanları</span>Filtreli temiz hava</div>
+  </div>
+  <div class="pn">03</div>
+</div>
+
+<!-- ══════════ 3 · MASA ══════════ -->
+<div class="pg">
+  <img class="full" src="img/masa.png" alt="">
+  <div class="scrim" style="height:34%"></div>
+  <div class="blk" style="left:20mm;bottom:20mm;max-width:135mm">
+    <div class="kicker">03 · Çalışma alanı</div>
+    <h2 style="margin:3mm 0 3mm">Tek çekirdek, üç ekran</h2>
+    <div class="sub">Masaüstü panel, telefon ve kasa içindeki ekran aynı sunucuya bakar.
+      Model tek yerde çalışır; hepsi onu izler.</div>
+  </div>
+  <div class="pn">04</div>
+</div>
+
+<!-- ══════════ 4 · PANEL ══════════ -->
+<div class="pg" style="padding:0">
+  <img class="full" src="img/panel.png" alt="">
+  <div class="pn">05</div>
+</div>
+
+<!-- ══════════ 5 · PANEL AÇIKLAMALI ══════════ -->
+<div class="pg">
+  <div class="blk" style="left:20mm;top:11mm">
+    <div class="kicker">04 · Arayüz</div>
+    <h2 style="margin-top:2.5mm;font-size:17pt">Ekranda ne var</h2>
+  </div>
+
+  <!-- panel, tamamı görünecek şekilde -->
+  <div style="position:absolute;left:34mm;right:34mm;top:28mm;height:129mm;
+       border:1px solid rgba(83,216,255,.22);border-radius:2px;overflow:hidden">
+    <img src="img/panel.png" style="width:100%;height:100%;object-fit:contain;display:block">
+
+    <!-- numaralı işaretler (panel üzerindeki gerçek konumlara) -->
+    <div class="mk" style="left:5%;top:24%">1</div>
+    <div class="mk" style="left:19.5%;top:56%">2</div>
+    <div class="mk green" style="left:47%;top:50%">3</div>
+    <div class="mk amber" style="left:75.5%;top:26%">4</div>
+    <div class="mk" style="left:92%;top:30%">5</div>
+  </div>
+
+  <!-- açıklama şeridi -->
+  <div style="position:absolute;left:34mm;right:34mm;top:163mm;
+       display:grid;grid-template-columns:repeat(5,1fr);gap:5mm">
+    <div class="lg"><b>1</b><span class="h">Telemetri</span>
+      CPU, GPU, RAM, disk SMART — bu makineden okunuyor. Sensör yoksa
+      uydurma değer yerine "yok" yazar.</div>
+    <div class="lg"><b>2</b><span class="h">Diyalog</span>
+      Yazarak ya da mikrofonla sorulur. Duyulan metin doğrudan çalıştırılmaz,
+      önce kutuya düşer.</div>
+    <div class="lg green"><b>3</b><span class="h">Neural Core</span>
+      Durum göstergesi. Renk ve hareket, o an ne yaptığını söyler —
+      on ayrı durum.</div>
+    <div class="lg amber"><b>4</b><span class="h">Diagnostic Brain</span>
+      Aktif vaka, belirtiler, hipotezler. Yüzdeler kesin değil; panel bunu
+      açıkça yazar.</div>
+    <div class="lg"><b>5</b><span class="h">Brain Monitor</span>
+      Hangi model yüklü, VRAM ne kadar dolu, kaç araç izinli. Olmayan modül
+      "yok" işaretli.</div>
+  </div>
+  <div class="pn">06</div>
+</div>
+
+<!-- ══════════ 6 · DURUMLAR ══════════ -->
+<div class="pg">
+  <div class="blk" style="left:20mm;top:14mm">
+    <div class="kicker">05 · Neural Core</div>
+    <h2 style="margin-top:2.5mm">Sekiz durum</h2>
+  </div>
+  <div class="blk sub" style="right:20mm;top:16mm;max-width:78mm;text-align:right">
+    Durum yalnızca yazı değil: renk, nabız ve halka hareketi birlikte değişir.
+    Odanın öbür ucundan bakınca bile ne yaptığı anlaşılır.
+  </div>
+
+  <div class="grid" style="left:20mm;right:20mm;top:38mm;bottom:16mm;
+       grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(2,1fr)">
+    <div class="cell"><img src="img/core-standby.png"><div class="lab">HAZIR<small>Standby</small></div></div>
+    <div class="cell"><img src="img/core-listening.png"><div class="lab">DİNLİYOR<small>Mikrofon açık</small></div></div>
+    <div class="cell"><img src="img/core-thinking.png"><div class="lab">DÜŞÜNÜYOR<small>Model çalışıyor</small></div></div>
+    <div class="cell"><img src="img/core-speaking.png"><div class="lab">KONUŞUYOR<small>Ses akıyor</small></div></div>
+    <div class="cell"><img src="img/core-analyzing.png"><div class="lab">ANALİZ EDİYOR<small>Veri okunuyor</small></div></div>
+    <div class="cell"><img src="img/core-diagnosing.png"><div class="lab">TEŞHİS EDİYOR<small>Hipotez kuruluyor</small></div></div>
+    <div class="cell"><img src="img/core-warning.png"><div class="lab">UYARI<small>Dikkat gerekiyor</small></div></div>
+    <div class="cell"><img src="img/core-critical.png"><div class="lab">KRİTİK<small>Acil müdahale</small></div></div>
+  </div>
+  <div class="pn">07</div>
+</div>
+
+<!-- ══════════ 7 · HOLOGRAM ══════════ -->
+<div class="pg">
+  <img class="full" src="img/hologram.png" alt="">
+  <div class="scrim" style="height:30%"></div>
+  <div class="blk" style="left:20mm;bottom:20mm;max-width:130mm">
+    <div class="kicker">06 · Hologram</div>
+    <h2 style="margin:3mm 0 3mm">Havada duran çekirdek</h2>
+    <div class="sub">Pepper's Ghost: 45 derecelik yarı geçirgen cam, alttaki ekranı
+      yansıtır. Siyah alanlar görünmez olduğu için yalnızca parlayan halkalar kalır —
+      Neural Core zaten koyu zeminde tasarlanmıştı.</div>
+  </div>
+  <div class="pn">08</div>
+</div>
+
+<!-- ══════════ 8 · TELEFON ══════════ -->
+<div class="pg">
+  <div style="position:absolute;inset:0;
+       background:radial-gradient(120% 90% at 30% 10%, #16222c, #0a1018 45%, #04070b)"></div>
+
+  <div style="position:absolute;left:26mm;top:14mm;bottom:14mm;width:74mm;
+       display:flex;align-items:center;justify-content:center">
+    <div style="position:relative;width:66mm;height:135mm;border-radius:9mm;padding:2.4mm;
+         background:linear-gradient(148deg,#3e4854,#181f28 55%,#0c1116);
+         box-shadow:0 14mm 26mm rgba(0,0,0,.9), 0 0 0 .35mm rgba(160,210,235,.22),
+                    0 0 26mm rgba(83,216,255,.22)">
+      <div style="position:relative;width:100%;height:100%;overflow:hidden;border-radius:7mm">
+        <img src="img/telefon.png" style="width:100%;height:100%;object-fit:cover;
+             object-position:top center;display:block">
+      </div>
+      <div style="position:absolute;left:50%;top:4mm;width:20mm;height:5mm;
+           transform:translateX(-50%);border-radius:3mm;background:#04070b"></div>
+    </div>
+  </div>
+
+  <div class="blk" style="left:118mm;top:34mm;max-width:96mm">
+    <div class="kicker">07 · Telefon</div>
+    <h2 style="margin:3mm 0 5mm">Aynı sistem, cebinizde</h2>
+    <div class="sub" style="margin-bottom:6mm">Panel dar ekranda kendiliğinden dikey
+      düzene geçer. Servisteyken makineye sormak için bilgisayar başına dönmek gerekmiyor.</div>
+
+    <div class="note green" style="position:relative;max-width:96mm;margin-bottom:4mm">
+      <div class="t">Çalışıyor</div>
+      <div class="d">Yazışma · sesli cevap · telemetri · terminal komutları</div>
+    </div>
+    <div class="note amber" style="position:relative;max-width:96mm">
+      <div class="t">HTTPS bekliyor</div>
+      <div class="d">Mikrofon — iOS güvenli olmayan bağlantıda mikrofonu vermiyor.
+        Tailscale kurulunca açılacak.</div>
+    </div>
+  </div>
+  <div class="pn">09</div>
+</div>
+
+<!-- ══════════ 9 · KAPANIŞ ══════════ -->
+<div class="pg">
+  <img class="full" src="img/kule.png" alt="" style="opacity:.42;object-position:50% 40%">
+  <div style="position:absolute;inset:0;background:
+       linear-gradient(90deg, rgba(5,9,14,.95) 0%, rgba(5,9,14,.72) 46%, rgba(5,9,14,.35) 100%)"></div>
+  <span class="cn tl"></span><span class="cn br"></span>
+
+  <div class="blk" style="left:20mm;top:40mm;max-width:132mm">
+    <div class="eyebrow">Sonuç</div>
+    <div class="rule"></div>
+    <h2 style="font-size:24pt;line-height:1.15;margin-bottom:6mm">
+      Sizin yerinize teşhis koymaz.<br>Teşhis koyarken yanınızda durur.</h2>
+    <div class="sub" style="max-width:118mm">
+      Hiçbir şeyi unutmayan, bütün kılavuzları ezbere bilen, atlanan adımı söyleyen
+      bir çırak. Kararı siz verirsiniz.
+    </div>
+  </div>
+
+  <div class="stats" style="left:20mm;bottom:26mm;gap:14mm">
+    <div class="stat"><div class="v">25-30</div><div class="k">token / sn</div></div>
+    <div class="stat"><div class="v">~550 W</div><div class="k">tepe güç</div></div>
+    <div class="stat"><div class="v">~380 ₺</div><div class="k">aylık elektrik</div></div>
+    <div class="stat"><div class="v">yerel</div><div class="k">ses + veri</div></div>
+  </div>
+  <div class="pn">10</div>
+</div>
+
+</body>
+</html>

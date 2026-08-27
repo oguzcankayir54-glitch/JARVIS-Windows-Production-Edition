@@ -1,0 +1,30 @@
+#include <windows.h>
+
+/* Simge kaynak 1 olmali: Explorer bir exe'nin en dusuk numarali simgesini
+   gosterir, ve kisayol da onu alir. */
+1 ICON "../jarvis.ico"
+
+1 VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"        /* Ingilizce (ABD), Unicode */
+        BEGIN
+            VALUE "CompanyName",      "J.A.R.V.I.S."
+            VALUE "FileDescription",  "J.A.R.V.I.S. panel baslatici"
+            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "InternalName",     "JARVIS"
+            VALUE "OriginalFilename", "JARVIS.exe"
+            VALUE "ProductName",      "J.A.R.V.I.S."
+            VALUE "ProductVersion",   "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

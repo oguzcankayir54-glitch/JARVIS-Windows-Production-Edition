@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- J.A.R.V.I.S. simgesi — panelin Neural Core görselinin ikona indirgenmiş
+       hâli. Tasarım kısıtı: 16 pikselde de okunmalı, o yüzden ayrıntı değil
+       eşmerkezli biçimler taşıyor. Renkler panelin kendi paletinden. -->
+  <defs>
+    <radialGradient id="zemin" cx="50%" cy="42%" r="70%">
+      <stop offset="0%"   stop-color="#12303f"/>
+      <stop offset="60%"  stop-color="#0a1a24"/>
+      <stop offset="100%" stop-color="#050e14"/>
+    </radialGradient>
+    <radialGradient id="cekirdek" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#ffffff"/>
+      <stop offset="35%"  stop-color="#9beeff"/>
+      <stop offset="70%"  stop-color="#53d8ff"/>
+      <stop offset="100%" stop-color="#38e8d0" stop-opacity="0.15"/>
+    </radialGradient>
+    <linearGradient id="halka" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#53d8ff"/>
+      <stop offset="50%"  stop-color="#38e8d0"/>
+      <stop offset="100%" stop-color="#4da6ff"/>
+    </linearGradient>
+    <filter id="parla" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="bulanik"/>
+      <feMerge>
+        <feMergeNode in="bulanik"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="parla-hafif" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- zemin -->
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#zemin)"/>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="54.5"
+        fill="none" stroke="#2a5568" stroke-width="3" opacity="0.85"/>
+
+  <!-- dış halka -->
+  <circle cx="128" cy="128" r="86" fill="none" stroke="url(#halka)"
+          stroke-width="7" opacity="0.95" filter="url(#parla)"/>
+
+  <!-- kesikli izleme halkası: paneldeki tarama hissini veriyor -->
+  <circle cx="128" cy="128" r="102" fill="none" stroke="#38e8d0"
+          stroke-width="3" opacity="0.5"
+          stroke-dasharray="20 14" stroke-linecap="round"/>
+
+  <!-- ışınsal çubuklar -->
+  <g stroke="#53d8ff" stroke-width="6" stroke-linecap="round" opacity="0.75"
+     filter="url(#parla-hafif)">
+    <line x1="128" y1="30"  x2="128" y2="52"/>
+    <line x1="128" y1="204" x2="128" y2="226"/>
+    <line x1="30"  y1="128" x2="52"  y2="128"/>
+    <line x1="204" y1="128" x2="226" y2="128"/>
+  </g>
+  <g stroke="#4da6ff" stroke-width="4" stroke-linecap="round" opacity="0.5">
+    <line x1="58"  y1="58"  x2="74"  y2="74"/>
+    <line x1="182" y1="182" x2="198" y2="198"/>
+    <line x1="198" y1="58"  x2="182" y2="74"/>
+    <line x1="74"  y1="182" x2="58"  y2="198"/>
+  </g>
+
+  <!-- iç halka -->
+  <circle cx="128" cy="128" r="58" fill="none" stroke="#38e8d0"
+          stroke-width="4" opacity="0.9"/>
+
+  <!-- çekirdek -->
+  <circle cx="128" cy="128" r="44" fill="url(#cekirdek)" filter="url(#parla)"/>
+  <circle cx="128" cy="128" r="20" fill="#eafcff" opacity="0.95"/>
+</svg>

@@ -1,0 +1,1 @@
+"""Bilgi tabani (RAG) katmani."""

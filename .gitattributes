@@ -1,0 +1,21 @@
+# Windows tarafındaki betikler CRLF ile durmalı.
+#
+# Sebep somut: Windows PowerShell 5.1 LF satır sonlarıyla here-string
+# sonlandırıcısını tanımıyor ve betiği bozuk ayrıştırıyor; .cmd dosyaları da
+# LF ile beklenmedik davranıyor. Bu depo Linux'ta yazıldığı için git'e açıkça
+# söylenmezse dosyalar LF olarak checkout edilir ve hata yalnızca kullanıcının
+# makinesinde ortaya çıkar.
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+windows/jarvis.ini text eol=crlf
+
+# WSL içinde çalışan kabuk betikleri LF kalmalı: CRLF ile shebang satırı
+# "/usr/bin/env bash\r" olur ve çekirdek yorumlayıcıyı bulamaz.
+*.sh    text eol=lf
+
+# İkili dosyalar hiç dokunulmasın.
+*.exe   binary
+*.ico   binary
+*.png   binary
+*.pdf   binary

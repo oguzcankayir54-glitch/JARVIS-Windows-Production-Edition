@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>J.A.R.V.I.S. — 32B Sistem Tasarımı</title>
+<style>
+  @page { size: A4; margin: 17mm 15mm 18mm 15mm; }
+  @page :first { margin: 0; }
+
+  :root{
+    --ink:#101820; --ink-2:#33454f; --ink-3:#5d7280; --ink-4:#8ea3b0;
+    --line:#d8e2e8; --line-2:#b6c8d3;
+    --cyan:#0a7ea4; --cyan-bg:#eef8fc;
+    --amber:#9a6400; --amber-bg:#fff7e6;
+    --red:#b3202f;  --red-bg:#fdeef0;
+    --green:#1c7a4f; --green-bg:#eefaf3;
+    --purple:#5b3fa8; --purple-bg:#f2eefc;
+    --mono:"SFMono-Regular",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{font-size:9.8pt}
+  body{ margin:0; color:var(--ink); background:#fff;
+        font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
+        line-height:1.44; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+
+  /* ═══════ KAPAK ═══════ */
+  .cover{
+    position:relative; width:210mm; height:297mm; overflow:hidden;
+    background:#05090e; color:#cfeaf7; page-break-after:always;
+  }
+  .cover svg.art{ position:absolute; inset:0; width:100%; height:100% }
+  .cover .txt{ position:absolute; left:20mm; right:20mm; top:24mm; z-index:2 }
+  .cover .eyebrow{ font-size:8.5pt; letter-spacing:4px; text-transform:uppercase;
+                   color:#53d8ff; font-weight:700 }
+  .cover h1{ font-size:34pt; line-height:1.05; margin:7mm 0 0; font-weight:700;
+             color:#fff; letter-spacing:-1px }
+  .cover h1 em{ font-style:normal; color:#53d8ff; display:block; font-size:20pt;
+                letter-spacing:2px; margin-top:3mm; font-weight:600 }
+  .cover .strap{ position:absolute; left:20mm; right:20mm; bottom:22mm; z-index:2 }
+  .cover .strap .big{ font-family:var(--mono); font-size:26pt; color:#53d8ff; font-weight:700 }
+  .cover .strap .small{ font-size:9pt; color:#7fa0b3; margin-top:2mm; letter-spacing:.6px }
+  .cover .meta{ position:absolute; left:20mm; bottom:8mm; font-size:7.5pt;
+                color:#4d6b80; letter-spacing:1.6px; text-transform:uppercase; z-index:2 }
+
+  /* ═══════ GENEL ═══════ */
+  h2{ font-size:15pt; margin:0 0 4mm; padding-bottom:2.5mm; font-weight:700;
+      border-bottom:2px solid var(--cyan); letter-spacing:-.2px; page-break-after:avoid }
+  h2 .no{ color:var(--cyan); margin-right:3mm }
+  h3{ font-size:11.5pt; margin:5.5mm 0 2mm; font-weight:700; page-break-after:avoid }
+  h4{ font-size:9.8pt; margin:4mm 0 1.5mm; font-weight:700; color:var(--ink-2); page-break-after:avoid }
+  section{ page-break-before:always }
+  section.cont{ page-break-before:auto }
+  p{ margin:0 0 2.4mm }
+  ul,ol{ margin:0 0 2.4mm; padding-left:5.5mm } li{ margin-bottom:1mm }
+  code{ font-family:var(--mono); font-size:8.4pt; background:#f0f4f7; padding:.5mm 1.2mm; border-radius:2px }
+  .lead{ font-size:10.6pt; color:var(--ink-2); margin-bottom:4mm }
+
+  table{ width:100%; border-collapse:collapse; margin:2.5mm 0 4mm; font-size:8.6pt; page-break-inside:avoid }
+  th{ text-align:left; padding:2mm 2.5mm; background:var(--ink); color:#fff; font-weight:600; font-size:8pt }
+  td{ padding:1.6mm 2.5mm; border-bottom:1px solid var(--line); vertical-align:top }
+  tr:nth-child(even) td{ background:#fafcfd }
+  td.num,th.num{ text-align:right; font-family:var(--mono); font-size:8.3pt; white-space:nowrap }
+  tfoot td{ font-weight:700; border-top:2px solid var(--ink); border-bottom:none; background:#f2f7fa !important }
+  .tbl-note{ font-size:7.8pt; color:var(--ink-3); margin:-3mm 0 4mm }
+
+  .box{ border-left:3px solid var(--line-2); padding:2.8mm 4mm; margin:3.5mm 0;
+        page-break-inside:avoid; background:#fafcfd }
+  .box p:last-child{ margin-bottom:0 }
+  .box .lbl{ font-size:7.8pt; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+             display:block; margin-bottom:1.5mm }
+  .box.warn{ border-color:#e0a30a; background:var(--amber-bg) } .box.warn .lbl{ color:var(--amber) }
+  .box.crit{ border-color:var(--red); background:var(--red-bg) }  .box.crit .lbl{ color:var(--red) }
+  .box.good{ border-color:#2aa06a; background:var(--green-bg) }   .box.good .lbl{ color:var(--green) }
+  .box.info{ border-color:var(--cyan); background:var(--cyan-bg) }.box.info .lbl{ color:var(--cyan) }
+
+  .tag{ display:inline-block; font-size:7.2pt; font-weight:700; letter-spacing:.6px;
+        padding:.6mm 1.8mm; border-radius:2px; text-transform:uppercase; vertical-align:1px }
+  .tag.ok{ background:var(--green-bg); color:var(--green); border:1px solid #b6e3cd }
+  .tag.no{ background:var(--red-bg); color:var(--red); border:1px solid #f2c4ca }
+  .tag.mid{ background:var(--amber-bg); color:var(--amber); border:1px solid #f0dcb0 }
+  .tag.new{ background:var(--purple-bg); color:var(--purple); border:1px solid #d5c9f2 }
+
+  figure{ margin:4mm 0; page-break-inside:avoid }
+  figure svg{ width:100%; height:auto; display:block }
+  figcaption{ font-size:8pt; color:var(--ink-3); margin-top:2mm; text-align:center }
+  .fig-frame{ border:1px solid var(--line); border-radius:3px; padding:3mm; background:#fbfdfe }
+
+  .kv{ display:grid; grid-template-columns:auto 1fr; gap:.8mm 4mm; font-size:8.8pt; margin:1.5mm 0 2.5mm }
+  .kv dt{ color:var(--ink-3) } .kv dd{ margin:0; font-weight:600 }
+
+  .tier{ border:1px solid var(--line-2); border-radius:3px; padding:3.5mm; margin:3.5mm 0; page-break-inside:avoid }
+  .tier.must{ border-color:var(--cyan); border-width:2px; background:var(--cyan-bg) }
+  .tier h3{ margin:0 0 1mm; display:flex; align-items:baseline; gap:3mm }
+  .tier .price{ margin-left:auto; font-family:var(--mono); font-size:11pt; color:var(--cyan); font-weight:700 }
+  .tier .verdict{ font-size:8.8pt; color:var(--ink-2); margin:0 0 2.5mm }
+  .tier table{ margin-bottom:0 }
+
+  /* VRAM bar */
+  .vram{ margin:3mm 0 1mm }
+  .vram .bar{ display:flex; height:9mm; border-radius:2px; overflow:hidden; border:1px solid var(--line-2) }
+  .vram .seg{ display:flex; align-items:center; justify-content:center; font-size:7pt;
+              font-weight:700; color:#fff; letter-spacing:.3px }
+  .vram .scale{ display:flex; justify-content:space-between; font-size:7pt;
+                color:var(--ink-3); font-family:var(--mono); margin-top:1mm }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════ KAPAK ══════════════════════ -->
+<div class="cover">
+  <svg class="art" viewBox="0 0 595 842" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="#53d8ff" stop-opacity=".30"/>
+        <stop offset="55%"  stop-color="#53d8ff" stop-opacity=".07"/>
+        <stop offset="100%" stop-color="#53d8ff" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="ringfade" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%"   stop-color="#53d8ff" stop-opacity=".85"/>
+        <stop offset="60%"  stop-color="#4da6ff" stop-opacity=".35"/>
+        <stop offset="100%" stop-color="#a875ff" stop-opacity=".18"/>
+      </linearGradient>
+      <pattern id="grid" width="26" height="26" patternUnits="userSpaceOnUse">
+        <path d="M26 0H0V26" fill="none" stroke="#53d8ff" stroke-opacity=".055" stroke-width="1"/>
+      </pattern>
+    </defs>
+
+    <rect width="595" height="842" fill="#05090e"/>
+    <rect width="595" height="842" fill="url(#grid)"/>
+    <circle cx="298" cy="470" r="260" fill="url(#glow)"/>
+
+    <!-- kasa silüeti -->
+    <g stroke="#53d8ff" fill="none" stroke-opacity=".22">
+      <rect x="196" y="316" width="204" height="300" rx="5" stroke-width="1.6"/>
+      <rect x="206" y="326" width="184" height="280" rx="3" stroke-width=".7" stroke-opacity=".13"/>
+      <line x1="352" y1="326" x2="352" y2="606" stroke-width=".7" stroke-opacity=".13"/>
+    </g>
+    <!-- fanlar: üst 2 çıkış, alt 2 giriş -->
+    <g stroke="#53d8ff" fill="none" stroke-opacity=".30" stroke-width="1">
+      <circle cx="242" cy="300" r="13"/><circle cx="288" cy="300" r="13"/>
+      <circle cx="242" cy="632" r="13"/><circle cx="288" cy="632" r="13"/>
+      <circle cx="180" cy="390" r="13"/><circle cx="180" cy="436" r="13"/><circle cx="180" cy="482" r="13"/>
+    </g>
+
+    <!-- Neural Core -->
+    <g transform="translate(298,470)">
+      <circle r="118" fill="none" stroke="url(#ringfade)" stroke-width="1.1"/>
+      <circle r="96"  fill="none" stroke="#53d8ff" stroke-opacity=".30" stroke-width=".8"
+              stroke-dasharray="3 7"/>
+      <circle r="74"  fill="none" stroke="url(#ringfade)" stroke-width="1.6"/>
+      <circle r="52"  fill="none" stroke="#53d8ff" stroke-opacity=".38" stroke-width=".8"
+              stroke-dasharray="1.5 5"/>
+      <circle r="30"  fill="none" stroke="#53d8ff" stroke-opacity=".65" stroke-width="1.3"/>
+      <circle r="11"  fill="#53d8ff" fill-opacity=".16" stroke="#53d8ff" stroke-opacity=".9" stroke-width="1"/>
+      <circle r="3.2" fill="#9beeff"/>
+      <!-- çevresel tikler -->
+      <g stroke="#53d8ff" stroke-opacity=".45" stroke-width="1">
+        <line x1="0" y1="-132" x2="0" y2="-120"/><line x1="0" y1="120" x2="0" y2="132"/>
+        <line x1="-132" y1="0" x2="-120" y2="0"/><line x1="120" y1="0" x2="132" y2="0"/>
+        <line x1="-93" y1="-93" x2="-85" y2="-85"/><line x1="85" y1="85" x2="93" y2="93"/>
+        <line x1="93" y1="-93" x2="85" y2="-85"/><line x1="-85" y1="85" x2="-93" y2="93"/>
+      </g>
+      <!-- yörünge düğümleri -->
+      <g fill="#53d8ff">
+        <circle cx="74" cy="0" r="2.6"/><circle cx="-52" cy="-52" r="2.2" fill-opacity=".75"/>
+        <circle cx="-96" cy="18" r="2" fill-opacity=".55"/><circle cx="41" cy="62" r="2.2" fill-opacity=".7"/>
+      </g>
+    </g>
+
+    <!-- köşe braketleri -->
+    <g stroke="#53d8ff" stroke-opacity=".45" stroke-width="1.4" fill="none">
+      <path d="M48 128 v-22 h22"/><path d="M547 128 v-22 h-22"/>
+      <path d="M48 742 v22 h22"/><path d="M547 742 v22 h-22"/>
+    </g>
+  </svg>
+
+  <div class="txt">
+    <div class="eyebrow">J.A.R.V.I.S. · Sistem Tasarımı</div>
+    <h1>32B Sınıfı<br>İş İstasyonu<em>Donanım · Görsel Analiz · Bütçe</em></h1>
+  </div>
+
+  <div class="strap">
+    <div class="small">24 GB VRAM · cam vitrin kasa · dikey ekran kartı · hologram panel</div>
+  </div>
+  <div class="meta">23 Ağustos 2026 · Revizyon 2</div>
+</div>
+
+<!-- ══════════════════════ 0 · ÖZET ══════════════════════ -->
+<section class="cont">
+<h2><span class="no">0</span>Ne değişti</h2>
+<p class="lead">70B kararından vazgeçtiniz. Bu, bütçenin dörtte üçünü değil,
+   <strong>üçte ikisini</strong> geri getiriyor — ve geri gelen para vitrin kasaya,
+   hologram panele ve yedeklemeye harcanabilir hâle geliyor.</p>
+
+<table>
+  <thead><tr><th>Ölçüt</th><th>Eski plan (70B · Yol B)</th><th>Yeni plan (32B)</th><th class="num">Fark</th></tr></thead>
+  <tbody>
+    <tr><td>Ekran kartı</td><td>2× RTX 3090 + NVLink</td><td>1× RTX 3090</td><td class="num">−41.500</td></tr>
+    <tr><td>VRAM</td><td>48 GB</td><td>24 GB</td><td class="num">—</td></tr>
+    <tr><td>Güç kaynağı</td><td>1200 W Platinum</td><td>850 W Gold</td><td class="num">−5.000</td></tr>
+    <tr><td>Tepe güç</td><td>~850 W</td><td>~550 W</td><td class="num">−300 W</td></tr>
+    <tr><td>Aylık elektrik</td><td>~560 TL</td><td>~380 TL</td><td class="num">−180/ay</td></tr>
+    <tr><td>Isı sorunu</td><td>İki kart üst üste</td><td><span class="tag ok">Yok</span></td><td class="num">—</td></tr>
+    <tr><td>Model</td><td>Llama 3.3 70B Q4</td><td>Qwen2.5 32B Q4</td><td class="num">—</td></tr>
+    <tr><td>Hız</td><td>12-18 tok/sn</td><td><strong>25-30 tok/sn</strong></td><td class="num">daha hızlı</td></tr>
+  </tbody>
+</table>
+
+<div class="box good">
+  <span class="lbl">Kazanılan iki şey</span>
+  <p><strong>1. Daha hızlı cevap.</strong> 32B tek karta tamamen sığdığı için,
+     iki karta bölünmüş 70B'den <em>daha hızlı</em> cevap veriyor. Sesli konuşurken
+     fark edilir bir şey bu — 70B'de cümle başına bekleme var, 32B'de yok.</p>
+  <p><strong>2. Isı sorunu tamamen ortadan kalktı.</strong> Çift kart kurulumlarının
+     en yaygın arızası üstteki kartın hava alamamasıydı. Tek kart cam kasada
+     rahat nefes alıyor — ve <em>dikey monte edildiğinde</em> vitrinin merkez
+     parçası oluyor.</p>
+</div>
+
+<div class="box warn">
+  <span class="lbl">Kaybedilen tek şey</span>
+  <p>Uzun akıl yürütme zincirlerinde 70B'nin bir miktar üstünlüğü var. Sizin
+     iş akışınızda bunu göreceğinizi sanmıyorum, ama <strong>tahmin etmeyelim</strong>:
+     <code>jarvis-karsilastir</code> aracıyla 14B ve 32B'yi kör olarak
+     karşılaştırın (<code>docs/MODEL-KARSILASTIRMA.md</code>). Sonuç başa başsa
+     bu 62.000 TL'yi de harcamayın.</p>
+</div>
+</section>
+
+<!-- ══════════════════════ 1 · NEDEN 24 GB ══════════════════════ -->
+<section>
+<h2><span class="no">1</span>Neden tam olarak 24 GB</h2>
+<p>24 GB rastgele seçilmiş bir sayı değil. 32B sınıfı bir modelin Q4 nicemlemesi
+   <strong>~20 GB</strong> tutar; geriye kalan 4 GB, aynı anda çalışacak diğer
+   modellere (mikrofon, gömme, küçük görü modeli) yetiyor. 16 GB'lık bir kart
+   32B'yi zorlar, 32 GB'lık kart parayı boşa harcar.</p>
+
+<table>
+  <thead><tr><th>Model</th><th class="num">Q4 boyutu</th><th class="num">+8k bağlam</th><th class="num">Toplam</th><th>24 GB'da</th></tr></thead>
+  <tbody>
+    <tr><td>Qwen2.5 14B (bugünkü)</td><td class="num">9 GB</td><td class="num">1,5 GB</td><td class="num">10,5 GB</td><td><span class="tag ok">Bol bol</span></td></tr>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>Qwen2.5 32B</strong></td><td class="num">19-20 GB</td><td class="num">2 GB</td><td class="num"><strong>21-22 GB</strong></td><td><span class="tag ok">Sığar</span></td></tr>
+    <tr><td>Gemma 3 27B</td><td class="num">16 GB</td><td class="num">2 GB</td><td class="num">18 GB</td><td><span class="tag ok">Rahat</span></td></tr>
+    <tr><td>Llama 3.3 70B</td><td class="num">43-45 GB</td><td class="num">3 GB</td><td class="num">46-48 GB</td><td><span class="tag no">Sığmaz</span></td></tr>
+  </tbody>
+</table>
+
+<h3>24 GB nasıl paylaşılacak</h3>
+<p>Kart yalnızca ana modeli çalıştırmıyor. Gerçek bir oturumda bellek şöyle bölünür:</p>
+
+<div class="vram">
+  <div class="bar">
+    <div class="seg" style="width:83%;background:#0a7ea4">32B ana model · 20 GB</div>
+    <div class="seg" style="width:2.5%;background:#2aa06a"></div>
+    <div class="seg" style="width:4.5%;background:#5b3fa8">RAG</div>
+    <div class="seg" style="width:10%;background:#8ea3b0">boşluk</div>
+  </div>
+  <div class="scale"><span>0 GB</span><span>12 GB</span><span>24 GB</span></div>
+</div>
+<table>
+  <thead><tr><th>Yerleşik</th><th class="num">VRAM</th><th>Ne işe yarar</th></tr></thead>
+  <tbody>
+    <tr><td>Qwen2.5 32B Q4</td><td class="num">20 GB</td><td>Ana muhakeme — teşhis, sohbet, araç kullanımı</td></tr>
+    <tr><td>Whisper small (STT)</td><td class="num">0,6 GB</td><td>Mikrofon — konuşmayı metne çevirme</td></tr>
+    <tr><td>bge-m3 (gömme)</td><td class="num">1,1 GB</td><td>RAG — belge arama vektörleri</td></tr>
+    <tr><td>Serbest</td><td class="num">2,3 GB</td><td>Bağlam büyümesi ve tampon</td></tr>
+  </tbody>
+</table>
+
+<div class="box warn">
+  <span class="lbl">Görü modeli aynı anda sığmaz</span>
+  <p>Fotoğraftan teşhis (Faz 6) için görü modeli gerekir. Qwen2.5-VL 7B ≈ <strong>6 GB</strong> —
+     32B ile birlikte 24 GB'a sığmaz. İki çözüm var:</p>
+  <ul>
+    <li><strong>Model değiştirme:</strong> fotoğraf gelince Ollama 32B'yi boşaltıp görü
+        modelini yükler (10-20 sn gecikme), sonra geri döner. <span class="tag ok">Ücretsiz</span></li>
+    <li><strong>Küçük görü modeli:</strong> 3B sınıfı bir model (~3 GB) 32B'nin yanında
+        kalıcı durur. Daha zayıf ama <em>anında.</em></li>
+  </ul>
+  <p>Bu, 24 GB'ın tek gerçek sınırı. Bilerek kabul ediyoruz — alternatifi 466.000 TL'ydi.</p>
+</div>
+</section>
+
+<!-- ══════════════════════ 2 · GÖRSEL TASARIM ══════════════════════ -->
+<section>
+<h2><span class="no">2</span>Sistem nasıl görünecek</h2>
+<p class="lead">Aşağıdaki çizim şematiktir — ölçekli teknik resim değil, yerleşim planıdır.
+   Amaç, parçaların cam arkasında nereye geleceğini ve neyin görüneceğini göstermek.</p>
+
+<figure class="fig-frame">
+<svg viewBox="0 0 640 520" role="img" aria-label="Cam kasa önden görünüm ve bileşen yerleşimi">
+  <defs>
+    <linearGradient id="cam" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#dff0f7" stop-opacity=".55"/>
+      <stop offset="50%" stop-color="#ffffff" stop-opacity=".18"/>
+      <stop offset="100%" stop-color="#cfe6f0" stop-opacity=".45"/>
+    </linearGradient>
+    <marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0 0 L7 3.5 L0 7 z" fill="#0a7ea4"/>
+    </marker>
+  </defs>
+
+  <!-- KASA GÖVDESİ -->
+  <rect x="150" y="40" width="330" height="420" rx="7" fill="url(#cam)" stroke="#33454f" stroke-width="2"/>
+  <!-- iki bölme ayrımı -->
+  <line x1="392" y1="46" x2="392" y2="454" stroke="#8ea3b0" stroke-width="1" stroke-dasharray="4 4"/>
+  <text x="436" y="250" font-size="8" fill="#5d7280" text-anchor="middle"
+        transform="rotate(90 436 250)">ARKA BÖLME · KABLO + PSU</text>
+
+  <!-- ÜST: 2 çıkış fanı -->
+  <g>
+    <circle cx="215" cy="72" r="21" fill="#eef8fc" stroke="#0a7ea4" stroke-width="1.4"/>
+    <circle cx="215" cy="72" r="6" fill="#0a7ea4" fill-opacity=".25"/>
+    <circle cx="272" cy="72" r="21" fill="#eef8fc" stroke="#0a7ea4" stroke-width="1.4"/>
+    <circle cx="272" cy="72" r="6" fill="#0a7ea4" fill-opacity=".25"/>
+    <path d="M215 34 v-16" stroke="#0a7ea4" stroke-width="1.6" marker-end="url(#ar)"/>
+    <path d="M272 34 v-16" stroke="#0a7ea4" stroke-width="1.6" marker-end="url(#ar)"/>
+  </g>
+
+  <!-- ALT: 2 giriş fanı -->
+  <g>
+    <circle cx="215" cy="428" r="21" fill="#eefaf3" stroke="#1c7a4f" stroke-width="1.4"/>
+    <circle cx="215" cy="428" r="6" fill="#1c7a4f" fill-opacity=".22"/>
+    <circle cx="272" cy="428" r="21" fill="#eefaf3" stroke="#1c7a4f" stroke-width="1.4"/>
+    <circle cx="272" cy="428" r="6" fill="#1c7a4f" fill-opacity=".22"/>
+    <path d="M215 484 v-16" stroke="#1c7a4f" stroke-width="1.6" marker-end="url(#ar)"/>
+    <path d="M272 484 v-16" stroke="#1c7a4f" stroke-width="1.6" marker-end="url(#ar)"/>
+  </g>
+
+  <!-- YAN: 3 giriş fanı (sol kenar) -->
+  <g>
+    <rect x="116" y="132" width="30" height="196" rx="3" fill="#eefaf3" stroke="#1c7a4f" stroke-width="1.2"/>
+    <circle cx="131" cy="163" r="12" fill="none" stroke="#1c7a4f" stroke-width="1.2"/>
+    <circle cx="131" cy="230" r="12" fill="none" stroke="#1c7a4f" stroke-width="1.2"/>
+    <circle cx="131" cy="297" r="12" fill="none" stroke="#1c7a4f" stroke-width="1.2"/>
+    <path d="M78 163 h20" stroke="#1c7a4f" stroke-width="1.6" marker-end="url(#ar)"/>
+    <path d="M78 230 h20" stroke="#1c7a4f" stroke-width="1.6" marker-end="url(#ar)"/>
+    <path d="M78 297 h20" stroke="#1c7a4f" stroke-width="1.6" marker-end="url(#ar)"/>
+  </g>
+
+  <!-- İÇ EKRAN / HOLOGRAM -->
+  <rect x="172" y="112" width="130" height="76" rx="3" fill="#05090e" stroke="#0a7ea4" stroke-width="1.4"/>
+  <g transform="translate(237,150)">
+    <circle r="27" fill="none" stroke="#53d8ff" stroke-opacity=".55" stroke-width=".9"/>
+    <circle r="18" fill="none" stroke="#53d8ff" stroke-opacity=".8" stroke-width="1.1"/>
+    <circle r="8"  fill="none" stroke="#53d8ff" stroke-width="1.2"/>
+    <circle r="2.6" fill="#9beeff"/>
+  </g>
+  <text x="237" y="203" font-size="8.5" fill="#0a7ea4" text-anchor="middle" font-weight="bold">NEURAL CORE</text>
+  <text x="237" y="214" font-size="7.6" fill="#5d7280" text-anchor="middle">iç ekran · 7-10 inç</text>
+
+  <!-- ANAKART -->
+  <rect x="316" y="112" width="66" height="150" rx="2" fill="#f2f7fa" stroke="#5d7280" stroke-width="1.1"/>
+  <g fill="#8ea3b0">
+    <rect x="326" y="124" width="20" height="20" rx="2"/>
+    <rect x="352" y="124" width="6" height="46" rx="1"/>
+    <rect x="362" y="124" width="6" height="46" rx="1"/>
+    <rect x="326" y="182" width="46" height="5" rx="1"/>
+    <rect x="326" y="192" width="46" height="5" rx="1"/>
+  </g>
+
+  <!-- EKRAN KARTI (dikey) -->
+  <rect x="180" y="238" width="46" height="160" rx="3" fill="#101820" stroke="#0a7ea4" stroke-width="1.6"/>
+  <g fill="none" stroke="#53d8ff" stroke-opacity=".75" stroke-width="1.1">
+    <circle cx="203" cy="278" r="16"/><circle cx="203" cy="318" r="16"/><circle cx="203" cy="358" r="16"/>
+  </g>
+  <text x="203" y="230" font-size="8.5" fill="#0a7ea4" text-anchor="middle" font-weight="bold">RTX 3090</text>
+  <!-- riser kablosu -->
+  <path d="M226 300 C 262 300 274 250 316 250" fill="none" stroke="#5d7280"
+        stroke-width="2" stroke-dasharray="3 3"/>
+
+  <!-- PSU -->
+  <rect x="400" y="378" width="72" height="70" rx="3" fill="#f2f7fa" stroke="#5d7280" stroke-width="1.1"/>
+  <circle cx="436" cy="413" r="21" fill="none" stroke="#8ea3b0" stroke-width="1.2"/>
+  <text x="436" y="417" font-size="8" fill="#5d7280" text-anchor="middle">850W</text>
+
+  <!-- ETİKETLER -->
+  <g font-size="8.4" fill="#33454f">
+    <path d="M300 72 h58" stroke="#b6c8d3" stroke-width=".9"/>
+    <text x="362" y="69">2× ÇIKIŞ FANI</text><text x="362" y="79" fill="#5d7280">sıcak hava dışarı</text>
+
+    <path d="M194 428 h-44" stroke="#b6c8d3" stroke-width=".9"/>
+    <text x="144" y="425" text-anchor="end">2× ALT GİRİŞ</text>
+    <text x="144" y="435" text-anchor="end" fill="#5d7280">filtreli, temiz hava</text>
+
+    <text x="72" y="203" text-anchor="end">3× YAN</text>
+    <text x="72" y="213" text-anchor="end">GİRİŞ FANI</text>
+    <text x="72" y="245" text-anchor="end" fill="#5d7280">kartın</text>
+    <text x="72" y="255" text-anchor="end" fill="#5d7280">yüzüne</text>
+    <text x="72" y="265" text-anchor="end" fill="#5d7280">doğrudan</text>
+
+    <path d="M180 318 h-30" stroke="#b6c8d3" stroke-width=".9"/>
+    <text x="144" y="340" text-anchor="end">DİKEY</text>
+    <text x="144" y="350" text-anchor="end">MONTAJ</text>
+
+    <path d="M382 150 h44" stroke="#b6c8d3" stroke-width=".9"/>
+    <text x="430" y="147">ANAKART</text>
+    <text x="430" y="157" fill="#5d7280">+ 5800X</text>
+
+    <path d="M472 413 h20" stroke="#b6c8d3" stroke-width=".9"/>
+    <text x="496" y="410">GÜÇ</text>
+    <text x="496" y="420" fill="#5d7280">KAYNAĞI</text>
+  </g>
+
+  <!-- basınç rozeti -->
+  <rect x="150" y="472" width="330" height="26" rx="3" fill="#eefaf3" stroke="#2aa06a" stroke-width="1"/>
+  <text x="315" y="489" font-size="9" fill="#1c7a4f" text-anchor="middle" font-weight="bold">
+    GİRİŞ 5 FAN  ·  ÇIKIŞ 2 FAN  →  POZİTİF BASINÇ (toz camın arkasına girmez)
+  </text>
+</svg>
+<figcaption>Şekil 1 — Önden görünüm. Cam panelin arkasında görünen ana parçalar:
+  dikey monte ekran kartı, Neural Core ekranı ve fan yerleşimi.</figcaption>
+</figure>
+
+<div class="box info">
+  <span class="lbl">Tasarımın üç kararı</span>
+  <p><strong>1. Ekran kartı dikey.</strong> Yatay takılsaydı cam arkasından yalnızca
+     sırtı görünürdü. Dikey monte edilince fanları öne bakar ve vitrinin merkez
+     parçası olur — üstelik hava alması da kolaylaşır.</p>
+  <p><strong>2. Ekran sol üstte.</strong> Ekran kartının üstünde, göz hizasına yakın.
+     Neural Core dairesel olduğu için kare bir panelde ortalanmış duruyor.</p>
+  <p><strong>3. Giriş fanları kartın yüzüne bakıyor.</strong> Yan panelden gelen hava
+     doğrudan kartın emiş yüzeyine çarpar; ısınmış hava üstten çıkar. Bu, en kısa
+     ve en verimli hava yolu.</p>
+</div>
+</section>
+
+<!-- ══════════════════════ 3 · HAVA AKIŞI ══════════════════════ -->
+<section>
+<h2><span class="no">3</span>Hava akışı ve hologram optiği</h2>
+
+<figure class="fig-frame">
+<svg viewBox="0 0 640 300" role="img" aria-label="Yandan kesit: hava akış yönleri">
+  <defs>
+    <marker id="ar2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#0a7ea4"/>
+    </marker>
+    <marker id="ar3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#1c7a4f"/>
+    </marker>
+  </defs>
+
+  <rect x="170" y="40" width="300" height="220" rx="6" fill="#f7fbfd" stroke="#33454f" stroke-width="2"/>
+
+  <!-- iç bileşenler -->
+  <rect x="196" y="96" width="40" height="128" rx="3" fill="#101820" stroke="#0a7ea4" stroke-width="1.2"/>
+  <text x="216" y="240" font-size="8" fill="#0a7ea4" text-anchor="middle">GPU</text>
+  <rect x="300" y="86" width="120" height="16" rx="2" fill="#dfe9ef" stroke="#8ea3b0" stroke-width="1"/>
+  <text x="360" y="98" font-size="7.5" fill="#5d7280" text-anchor="middle">CPU soğutucu</text>
+
+  <!-- giriş okları (alt + sol) -->
+  <g stroke="#1c7a4f" stroke-width="2.2" fill="none" marker-end="url(#ar3)">
+    <path d="M230 290 v-46"/><path d="M300 290 v-46"/>
+    <path d="M120 130 h44"/><path d="M120 175 h44"/><path d="M120 220 h44"/>
+  </g>
+  <!-- iç dolaşım -->
+  <g stroke="#0a7ea4" stroke-width="1.4" fill="none" stroke-dasharray="4 3" opacity=".75">
+    <path d="M244 150 C 280 150 286 110 320 110"/>
+    <path d="M244 200 C 290 200 300 120 340 112"/>
+  </g>
+  <!-- çıkış okları (üst) -->
+  <g stroke="#0a7ea4" stroke-width="2.2" fill="none" marker-end="url(#ar2)">
+    <path d="M330 40 v-26"/><path d="M400 40 v-26"/>
+  </g>
+
+  <text x="120" y="118" font-size="8.5" fill="#1c7a4f" font-weight="bold">YAN GİRİŞ</text>
+  <text x="265" y="284" font-size="8.5" fill="#1c7a4f" font-weight="bold" text-anchor="middle">ALT GİRİŞ</text>
+  <text x="365" y="12" font-size="8.5" fill="#0a7ea4" font-weight="bold" text-anchor="middle">ÜST ÇIKIŞ</text>
+
+  <!-- basınç göstergesi -->
+  <g transform="translate(506,120)">
+    <rect x="0" y="0" width="118" height="76" rx="4" fill="#eefaf3" stroke="#2aa06a" stroke-width="1.2"/>
+    <text x="59" y="20" font-size="8.5" fill="#1c7a4f" text-anchor="middle" font-weight="bold">BASINÇ DENGESİ</text>
+    <text x="59" y="38" font-size="8" fill="#33454f" text-anchor="middle">giriş 5 &gt; çıkış 2</text>
+    <text x="59" y="54" font-size="8" fill="#33454f" text-anchor="middle">→ pozitif</text>
+    <text x="59" y="68" font-size="7.5" fill="#5d7280" text-anchor="middle">toz yalnızca filtreden</text>
+  </g>
+</svg>
+<figcaption>Şekil 2 — Yandan kesit. Soğuk hava alttan ve yandan girer, kartın üzerinden
+  geçer, ısınıp üstten çıkar. Isınan hava zaten yukarı çıkar — akış yönü fizikle aynı tarafta.</figcaption>
+</figure>
+
+<h3>Hologram nasıl çalışıyor</h3>
+<p>Pepper's Ghost: 150 yıllık bir sahne tekniği, bugünkü "hologram vitrinlerin"
+   hepsinde bu var. Parlak bir ekran, 45 derece açıyla duran yarı geçirgen bir cama
+   yansır; izleyici görüntüyü camın <em>arkasında, havada</em> görür.</p>
+
+<figure class="fig-frame">
+<svg viewBox="0 0 640 260" role="img" aria-label="Pepper's Ghost optik şeması">
+  <!-- ekran (altta, yukarı bakıyor) -->
+  <rect x="150" y="196" width="150" height="12" rx="2" fill="#05090e"/>
+  <text x="225" y="226" font-size="8.5" fill="#33454f" text-anchor="middle">EKRAN (yukarı bakar)</text>
+  <g transform="translate(225,202)">
+    <circle r="9" fill="none" stroke="#53d8ff" stroke-width="1.2"/>
+    <circle r="3" fill="#53d8ff"/>
+  </g>
+
+  <!-- 45 derece yarı geçirgen cam -->
+  <line x1="150" y1="196" x2="300" y2="46" stroke="#0a7ea4" stroke-width="3" stroke-opacity=".45"/>
+  <text x="196" y="106" font-size="8.5" fill="#0a7ea4" transform="rotate(-45 196 106)"
+        font-weight="bold">YARI GEÇİRGEN CAM · 45°</text>
+
+  <!-- ışın: ekrandan cama, camdan göze -->
+  <g stroke="#0a7ea4" stroke-width="1.6" fill="none">
+    <path d="M225 196 L 225 118"/>
+    <path d="M225 118 L 430 118"/>
+  </g>
+  <polygon points="430,118 420,114 420,122" fill="#0a7ea4"/>
+
+  <!-- sanal görüntü -->
+  <g transform="translate(120,118)" opacity=".6">
+    <circle r="22" fill="none" stroke="#a875ff" stroke-width="1" stroke-dasharray="3 3"/>
+    <circle r="11" fill="none" stroke="#a875ff" stroke-width="1.2"/>
+    <circle r="3.4" fill="#a875ff"/>
+  </g>
+  <path d="M225 118 L 142 118" stroke="#a875ff" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="120" y="164" font-size="8.5" fill="#5b3fa8" text-anchor="middle" font-weight="bold">SANAL GÖRÜNTÜ</text>
+  <text x="120" y="176" font-size="7.5" fill="#5d7280" text-anchor="middle">havada duruyor</text>
+
+  <!-- göz -->
+  <g transform="translate(456,118)">
+    <path d="M0 0 C 14 -16 42 -16 56 0 C 42 16 14 16 0 0 z" fill="#fff" stroke="#33454f" stroke-width="1.4"/>
+    <circle cx="28" cy="0" r="8" fill="#33454f"/><circle cx="28" cy="0" r="3" fill="#fff"/>
+  </g>
+  <text x="484" y="152" font-size="8.5" fill="#33454f" text-anchor="middle">İZLEYİCİ</text>
+
+  <!-- koyu arka plan notu -->
+  <rect x="330" y="184" width="290" height="52" rx="4" fill="#fff7e6" stroke="#e0a30a" stroke-width="1"/>
+  <text x="344" y="202" font-size="8" fill="#9a6400" font-weight="bold">ŞART: ARKA PLAN KOYU OLMALI</text>
+  <text x="344" y="216" font-size="7.8" fill="#33454f">Camın arkası aydınlıksa sanal görüntü silinir.</text>
+  <text x="344" y="228" font-size="7.8" fill="#33454f">Kasa içi RGB'yi bu bölgede kısın.</text>
+</svg>
+<figcaption>Şekil 3 — Pepper's Ghost. Ekran aşağıda yatay durur; 45°'lik cam görüntüyü
+  izleyiciye yansıtır ve görüntü camın arkasında asılı görünür.</figcaption>
+</figure>
+
+<div class="box good">
+  <span class="lbl">Neden Neural Core bunun için ideal</span>
+  <p>Pepper's Ghost'ta <strong>siyah alanlar görünmez olur</strong> — yalnızca parlak
+     pikseller havada asılı kalır. Neural Core zaten koyu zeminde parlayan halkalardan
+     oluşuyor; yani panelin mevcut tasarımı, hiç değiştirilmeden bu efekt için
+     doğru olanı yapıyor. Yalnızca arayüzün "yalnızca Core" gösteren bir modu gerekiyor,
+     o da yazılım tarafında birkaç saatlik iş.</p>
+</div>
+</section>
+
+<!-- ══════════════════════ 4 · DONANIM LİSTESİ ══════════════════════ -->
+<section>
+<h2><span class="no">4</span>Donanım listesi ve fiyatlar</h2>
+<p class="lead">Dört katman. Her katman kendi başına çalışan bir sistem bırakıyor;
+   sonrakine geçmeseniz elinizde yarım bir şey kalmıyor.</p>
+
+<div class="tier must">
+  <h3>Katman 1 — Çekirdek <span class="tag ok">şart</span> <span class="price">62.000 TL</span></h3>
+  <p class="verdict">32B modelin çalışması için gereken minimum. Bu katmandan sonra
+     J.A.R.V.I.S. bugünkünden belirgin şekilde zeki olur.</p>
+  <table>
+    <thead><tr><th>Kalem</th><th>Seçim / model</th><th class="num">TL</th></tr></thead>
+    <tbody>
+      <tr><td>Ekran kartı</td><td>RTX 3090 24 GB · ikinci el, yerinde test</td><td class="num">38.000</td></tr>
+      <tr><td>Güç kaynağı</td><td>850 W 80+ Gold · tam modüler</td><td class="num">9.000</td></tr>
+      <tr><td>M.2 SSD</td><td>2 TB Gen4 NVMe</td><td class="num">15.000</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="2">Ara toplam</td><td class="num">62.000</td></tr></tfoot>
+  </table>
+</div>
+
+<div class="tier">
+  <h3>Katman 2 — Vitrin kasa <span class="price">27.900 TL</span></h3>
+  <p class="verdict">"Uzay sistem" görüntüsü bu katmanda ortaya çıkıyor.
+     Termal olarak da kazanç — mevcut kasadan büyük ihtimalle daha iyi soğutur.</p>
+  <table>
+    <thead><tr><th>Kalem</th><th>Seçim / model</th><th class="num">TL</th></tr></thead>
+    <tbody>
+      <tr><td>Kasa</td><td>Lian Li O11 Dynamic EVO XL · 3 yüzü cam</td><td class="num">15.000</td></tr>
+      <tr><td>Fan ×7</td><td>120 mm PWM · yüksek statik basınç</td><td class="num">5.500</td></tr>
+      <tr><td>Fan çoğaltıcı</td><td>PWM hub · 8 kanal</td><td class="num">400</td></tr>
+      <tr><td>Dikey kart kiti</td><td>PCIe 4.0 riser + braket</td><td class="num">3.000</td></tr>
+      <tr><td>İç ekran</td><td>7-10 inç HDMI panel · Neural Core için</td><td class="num">4.000</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="2">Ara toplam</td><td class="num">27.900</td></tr></tfoot>
+  </table>
+</div>
+
+<div class="tier">
+  <h3>Katman 3 — Konfor ve emniyet <span class="price">16.500 TL</span></h3>
+  <p class="verdict">Şart değil ama biri gerçekten önemli: model yüklenirken gelen bir
+     elektrik kesintisi dosyayı bozar.</p>
+  <table>
+    <thead><tr><th>Kalem</th><th>Seçim / model</th><th class="num">TL</th></tr></thead>
+    <tbody>
+      <tr><td>Sistem RAM</td><td>+2×16 GB DDR4 (ikinci el) → 64 GB</td><td class="num">6.000</td></tr>
+      <tr><td>Harici disk</td><td>4 TB USB 3.2 HDD · model arşivi + yedek</td><td class="num">6.000</td></tr>
+      <tr><td>CPU soğutucu</td><td>240 mm AIO veya iyi kule</td><td class="num">4.500</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="2">Ara toplam</td><td class="num">16.500</td></tr></tfoot>
+  </table>
+</div>
+
+<div class="tier">
+  <h3>Katman 4 — Hologram <span class="price">9.000 TL</span></h3>
+  <p class="verdict">Şekil 3'teki etki. En son yapılacak iş; makine çalışırken
+     bir hafta sonu projesi.</p>
+  <table>
+    <thead><tr><th>Kalem</th><th>Seçim / model</th><th class="num">TL</th></tr></thead>
+    <tbody>
+      <tr><td>Yarı geçirgen cam</td><td>30×30 cm · %30-50 yansıtmalı beam splitter</td><td class="num">3.000</td></tr>
+      <tr><td>Kaynak ekran</td><td>Parlak 10-13 inç panel</td><td class="num">5.500</td></tr>
+      <tr><td>Montaj</td><td>45° braket + kablo</td><td class="num">500</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="2">Ara toplam</td><td class="num">9.000</td></tr></tfoot>
+  </table>
+</div>
+
+<h3>Genel toplam</h3>
+<table>
+  <thead><tr><th>Katman</th><th>Ne kazandırır</th><th class="num">Maliyet</th><th class="num">Kümülatif</th></tr></thead>
+  <tbody>
+    <tr><td>1 · Çekirdek</td><td>32B modeli tam hızda çalışır</td><td class="num">62.000</td><td class="num">62.000</td></tr>
+    <tr><td>2 · Vitrin kasa</td><td>Görünür, sergilenebilir makine</td><td class="num">27.900</td><td class="num">89.900</td></tr>
+    <tr><td>3 · Konfor</td><td>Yedekleme, RAM rahatlığı, sessizlik</td><td class="num">16.500</td><td class="num">106.400</td></tr>
+    <tr><td>4 · Hologram</td><td>Havada duran Neural Core</td><td class="num">9.000</td><td class="num">115.400</td></tr>
+  </tbody>
+  <tfoot><tr><td colspan="2">Tam proje</td><td class="num">115.400</td><td class="num">115.400</td></tr></tfoot>
+</table>
+
+<table>
+  <thead><tr><th>Korunan parçalar (yeniden alınmıyor)</th><th>Neden</th></tr></thead>
+  <tbody>
+    <tr><td>Ryzen 7 5800X</td><td>Çıkarımda işlemci %5-10 doluluğu geçmez</td></tr>
+    <tr><td>Mevcut anakart</td><td>Tek kart için ek yuva gerekmiyor</td></tr>
+    <tr><td>Mevcut 32 GB DDR4</td><td>Yeter; 64 GB yalnızca rahatlık</td></tr>
+    <tr><td>RTX 3080 Ti 12 GB</td><td><strong>Satın</strong> — ~25.000 TL eder, projeden düşer</td></tr>
+  </tbody>
+</table>
+
+<div class="box good">
+  <span class="lbl">Gerçek net maliyet</span>
+  <p>3080 Ti'yi satarsanız tam projenin net maliyeti <strong>≈90.000 TL</strong>'ye iner.
+     Yalnızca Katman 1 + 2 yaparsanız (ki yeter) <strong>≈65.000 TL.</strong></p>
+</div>
+
+<h3>Aylık işletme</h3>
+<table>
+  <thead><tr><th>Kullanım</th><th class="num">Ortalama güç</th><th class="num">Aylık kWh</th><th class="num">Aylık TL</th></tr></thead>
+  <tbody>
+    <tr><td>Sadece çalışırken açık (günde 3 sa)</td><td class="num">~180 W</td><td class="num">~45</td><td class="num">195</td></tr>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>7/24 boşta + günde 2 sa tam yük</strong></td><td class="num">~120 W ort.</td><td class="num">~88</td><td class="num"><strong>380</strong></td></tr>
+    <tr><td>7/24 tam yük</td><td class="num">~550 W</td><td class="num">~396</td><td class="num">1.710</td></tr>
+  </tbody>
+</table>
+<p class="tbl-note">4,32 TL/kWh (mesken kademe 2, 2026 EPDK tarifesi).</p>
+</section>
+
+<!-- ══════════════════════ 5 · NE ÖĞRENİR ══════════════════════ -->
+<section>
+<h2><span class="no">5</span>Bu sistemle J.A.R.V.I.S. ne öğrenir</h2>
+
+<div class="box crit">
+  <span class="lbl">Önce dürüst cevap: model kendi kendine öğrenmez</span>
+  <p>Yaygın bir yanlış anlama olduğu için baştan söyleyeyim: <strong>Qwen2.5 32B'nin
+     ağırlıkları sabittir.</strong> Onunla ne kadar konuşursanız konuşun, model
+     değişmez. Yarın da bugünkü kadar bilir.</p>
+  <p>"Öğrenme" bu projede üç ayrı mekanizmayla oluyor ve <strong>ikisi zaten var:</strong></p>
+</div>
+
+<table>
+  <thead><tr><th>Mekanizma</th><th>Nasıl çalışır</th><th>Durum</th></tr></thead>
+  <tbody>
+    <tr><td><strong>1. Hafıza</strong></td>
+        <td>Kalıcı bilgiler ve vaka kayıtları SQLite'ta durur, her turda bağlama eklenir.
+            Model değişmez ama <em>bildikleri</em> birikir.</td>
+        <td><span class="tag ok">Çalışıyor</span></td></tr>
+    <tr><td><strong>2. RAG</strong></td>
+        <td>Belge havuzu (servis kılavuzları, şemalar, datasheet) vektör olarak
+            aranır; ilgili parça soruyla birlikte modele verilir.</td>
+        <td><span class="tag new">24 GB açar</span></td></tr>
+    <tr><td><strong>3. İnce ayar (LoRA)</strong></td>
+        <td>Gerçek ağırlık değişimi. Kendi vaka kayıtlarınızla modeli eğitmek.</td>
+        <td><span class="tag mid">Kısıtlı</span></td></tr>
+  </tbody>
+</table>
+
+<div class="box warn">
+  <span class="lbl">İnce ayar hakkında gerçekçi olalım</span>
+  <p>24 GB'da <strong>32B modeli ince ayar edemezsiniz</strong> — QLoRA bile ~40 GB ister.
+     İnce ayar edebilecekleriniz 7B ve 14B sınıfı modeller (~18 GB).</p>
+  <p>Ama şunu da söyleyeyim: <strong>ince ayara muhtemelen hiç ihtiyacınız olmayacak.</strong>
+     İnce ayar üslup ve biçim öğretir, bilgi öğretmez. Bilgi için RAG doğru araçtır
+     ve çok daha ucuz, çok daha kolay güncellenir. Bir servis kılavuzu değiştiğinde
+     RAG'de dosyayı değiştirirsiniz; ince ayarda modeli baştan eğitmeniz gerekir.</p>
+</div>
+
+<h3>5.1 Bugün çalışan yetenekler</h3>
+<table>
+  <thead><tr><th>Yetenek</th><th>Ne yapıyor</th></tr></thead>
+  <tbody>
+    <tr><td>Sohbet + muhakeme</td><td>14B model · teknik sorulara detaylı cevap</td></tr>
+    <tr><td>Sistem telemetrisi</td><td>CPU/GPU sıcaklık, RAM, disk SMART · canlı</td></tr>
+    <tr><td>Terminal komutları</td><td>İzin listeli, kabuk kullanmadan, onay kapılı</td></tr>
+    <tr><td>Dosya işlemleri</td><td>Oku/yaz/listele · sır dosyaları mutlak yasak</td></tr>
+    <tr><td>Hafıza</td><td>Konuşma geçmişi + kalıcı bilgiler</td></tr>
+    <tr><td>Kimlik</td><td>Sizi tanır, hitap tercihinizi bilir</td></tr>
+    <tr><td>Ses (TTS)</td><td>ElevenLabs · panelde ve telefonda</td></tr>
+    <tr><td>Mikrofon (STT)</td><td>Yerel Whisper · ses buluta gitmez</td></tr>
+    <tr><td>Canlı panel</td><td>Neural Core + telemetri · telefondan erişilebilir</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 24 GB'ın açtığı yetenekler</h3>
+
+<h4>A · Daha iyi muhakeme <span class="tag new">Katman 1</span></h4>
+<p>32B modelin 14B'ye göre üstün olduğu yer bilgi değil, <strong>zincirleme akıl
+   yürütme</strong>. Teknik serviste bu şu demek: "DRAM LED'i yanıyor" gibi tek bir
+   belirtiden, doğru sırada eleme yapan bir teşhis planı çıkarabilmek. 14B liste
+   sayar; 32B eleme yapar.</p>
+<p>Ayrıca <strong>daha az uydurur.</strong> Küçük modellerin en sinir bozucu huyu,
+   emin olmadığı yerde makul görünen bir şey uydurmasıdır — olmayan bir BIOS ayarı,
+   yanlış bir LED anlamı. 32B'de bu belirgin şekilde azalıyor.</p>
+
+<h4>B · RAG — teknik doküman hafızası <span class="tag new">Faz 3</span></h4>
+<p>Bu, sistemin en büyük sıçraması. Belgeleri yükler, J.A.R.V.I.S. onlardan
+   <strong>alıntı yaparak</strong> cevap verir — hafızasından değil.</p>
+<table>
+  <thead><tr><th>Yüklenebilecek</th><th>Ne kazandırır</th></tr></thead>
+  <tbody>
+    <tr><td>Anakart servis kılavuzları</td><td>"Bu modelin DRAM LED'i ne demek" → belgeden kesin cevap</td></tr>
+    <tr><td>Boardview / şema dosyaları</td><td>Hangi hat nereye gidiyor, test noktaları</td></tr>
+    <tr><td>Datasheet'ler</td><td>Entegre pinout'ları, gerilim değerleri</td></tr>
+    <tr><td>Hata kodu tabloları</td><td>POST kodları, mavi ekran kodları</td></tr>
+    <tr><td>Kendi vaka notlarınız</td><td>"Geçen sene aynı belirtide şu çıkmıştı"</td></tr>
+    <tr><td>Garanti / fiyat listeleri</td><td>Müşteriye anında doğru rakam</td></tr>
+  </tbody>
+</table>
+<div class="box info">
+  <span class="lbl">Neden bu kadar önemli</span>
+  <p>Bir dil modelinin en zayıf noktası, <strong>bilmediğini bilmemesidir.</strong>
+     RAG bunu kökten değiştirir: cevap belgeden geldiği için hem doğrudur hem de
+     <em>kaynağı gösterilebilir.</em> "Bunu nereden biliyorsun?" sorusuna sayfa
+     numarası verebilen bir asistan, tahmin yürüten bir asistandan bambaşka bir şeydir.</p>
+  <p>Vektör verisi diskte durur — <strong>binlerce sayfa belge 24 GB'ı zorlamaz.</strong>
+     Yalnızca 1,1 GB'lık gömme modeli VRAM'de yer tutar.</p>
+</div>
+
+<h4>C · Görü — fotoğraftan teşhis <span class="tag new">Faz 6</span></h4>
+<p>Telefonla çektiğiniz fotoğrafı panele yükleyip sorabilmek:</p>
+<ul>
+  <li><strong>Anakart fotoğrafı</strong> → şişmiş/akmış kondansatör, yanık iz, kırık soket pini</li>
+  <li><strong>Mavi ekran fotoğrafı</strong> → hata kodunu okuyup yorumlama</li>
+  <li><strong>LED durumu</strong> → hangi LED yanıyor, ne anlama geliyor (RAG ile birleşince güçlü)</li>
+  <li><strong>Kablo/soket</strong> → doğru takılmış mı</li>
+  <li><strong>BIOS ekranı</strong> → ayarları okuyup yorum</li>
+</ul>
+<p>VRAM kısıtı yüzünden 32B ile aynı anda duramaz; ya model değişimi (10-20 sn) ya da
+   küçük bir görü modeli. <strong>Bu, 24 GB'ın kabul ettiğimiz tek ödünü.</strong></p>
+
+<h4>D · Diagnostic Brain — vaka hafızası <span class="tag new">Faz 4</span></h4>
+<p>Her teşhis bir <em>vaka</em> olarak kaydedilir: belirti, denenenler, sonuç.
+   Zamanla şuna dönüşür:</p>
+<ul>
+  <li>"Bu belirtiyi <strong>7 kez</strong> gördük; 5'inde RAM, 1'inde GPU, 1'inde PSU çıktı."</li>
+  <li>"Bu anakart modelinde <strong>bu arıza tipik</strong> — 3 vakada aynısı."</li>
+  <li>"Geçen sefer bu adımı atlamıştık, iki saat kaybetmiştik."</li>
+</ul>
+<p>Bu <strong>eğitim değil hafıza</strong> — ama pratikte öğrenmeye en çok benzeyen şey.
+   Ve sizin işinize özel: hiçbir hazır model sizin müşteri profilinizi bilmiyor.</p>
+
+<h4>E · Proaktif izleme <span class="tag new">Faz 7</span></h4>
+<p>Servise gelen makinelerin SMART ve sıcaklık verisi kaydedilirse:</p>
+<ul>
+  <li>"Bu diskin bekleyen sektörü 3 ayda 8'den 40'a çıkmış — müşteriyi arayın"</li>
+  <li>"Bu makine her yaz aynı sıcaklık sorununu getiriyor, macun ömrü dolmuş"</li>
+</ul>
+
+<h4>F · Ajanda ve iş takibi <span class="tag new">Faz 7</span></h4>
+<p>Hangi makine kimde, ne zaman söz verildi, hangi parça bekleniyor.
+   Panelin karşılama cümlesindeki "takviminizi kontrol edeyim mi" bu fazda
+   <strong>gerçek</strong> olur — şu an sadece bir cümle.</p>
+
+<h3>5.3 Olgunluk tablosu</h3>
+<table>
+  <thead><tr><th>Yetenek</th><th>Bugün (12 GB · 14B)</th><th>24 GB · 32B sonrası</th></tr></thead>
+  <tbody>
+    <tr><td>Teknik sohbet</td><td>İyi</td><td><strong>Çok iyi</strong> — daha az uydurma</td></tr>
+    <tr><td>Teşhis planı çıkarma</td><td>Liste sayar</td><td><strong>Eleme yapar</strong></td></tr>
+    <tr><td>Belgeden cevap</td><td><span class="tag no">Yok</span></td><td><span class="tag ok">RAG</span> kaynak göstererek</td></tr>
+    <tr><td>Fotoğraftan teşhis</td><td><span class="tag no">Yok</span></td><td><span class="tag ok">Var</span> model değişimiyle</td></tr>
+    <tr><td>Vaka hafızası</td><td>Ham konuşma</td><td><strong>Yapılandırılmış vaka</strong></td></tr>
+    <tr><td>Sesli konuşma</td><td>Var, biraz yavaş</td><td><strong>Akıcı</strong> — 25-30 tok/sn</td></tr>
+    <tr><td>Proaktif uyarı</td><td><span class="tag no">Yok</span></td><td><span class="tag ok">Var</span></td></tr>
+    <tr><td>Telefondan tam erişim</td><td>Yazı + ses</td><td>+ fotoğraf yükleme</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ══════════════════════ 6 · SINIRLAR ══════════════════════ -->
+<section>
+<h2><span class="no">6</span>Ne yapamayacak</h2>
+<p class="lead">Bu bölümü bilerek koyuyorum. Bir sistemin ne yapabildiğini abartmak,
+   onu kurduktan sonraki hayal kırıklığının tek sebebidir.</p>
+
+<table>
+  <thead><tr><th>Yapamayacağı</th><th>Neden</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Ölçüm yapmak</strong></td>
+        <td>Multimetre, osiloskop, termal kamera yerine geçmez. Verdiğiniz veriyi yorumlar,
+            kendi başına ölçmez.</td></tr>
+    <tr><td><strong>Fiziksel muayene</strong></td>
+        <td>Fotoğraftan mikro çatlak, soğuk lehim, kıl payı kısa devre görülmez.
+            Kamera çözünürlüğü ve açı her şeyi belirler.</td></tr>
+    <tr><td><strong>Kesin teşhis garantisi</strong></td>
+        <td>Her çıktı bir <em>hipotezdir</em>, ölçümle doğrulanmalıdır. Sistem bunu
+            zaten söylüyor — panelde "bu bir varsayım" ifadesi tasarımın parçası.</td></tr>
+    <tr><td><strong>20 yıllık sezgi</strong></td>
+        <td>"Bu ses kulağıma yanlış geldi" türü bilgi modele aktarılamaz.
+            Sizin katkınız burada yeri doldurulamaz.</td></tr>
+    <tr><td><strong>Kendini eğitmek</strong></td>
+        <td>Ağırlıklar sabit. Biriken şey hafıza ve belge, model değil.</td></tr>
+    <tr><td><strong>İnternetten canlı bilgi</strong></td>
+        <td>Web erişimi eklenebilir ama <em>bilinçli olarak</em> ertelendi: dışarıdan gelen
+            metin, prompt-injection açısından en riskli girdidir.</td></tr>
+    <tr><td><strong>Aynı anda 32B + görü</strong></td>
+        <td>24 GB'ın fiziksel sınırı. Model değişimi 10-20 saniye.</td></tr>
+  </tbody>
+</table>
+
+<div class="box info">
+  <span class="lbl">Doğru zihinsel model</span>
+  <p>J.A.R.V.I.S. <strong>sizin yerinize teşhis koymaz; teşhis koyarken yanınızda
+     duran, hiçbir şeyi unutmayan, bütün kılavuzları ezbere bilen bir çırak olur.</strong>
+     Kararı siz verirsiniz, o eleme yapar, hatırlatır, kaynak gösterir ve
+     atlanan adımı söyler.</p>
+  <p>Bu, "yapay zekâ teknisyen" iddiasından daha mütevazı ama çok daha
+     gerçekçi — ve gündelik işte çok daha kıymetli.</p>
+</div>
+</section>
+
+<!-- ══════════════════════ 7 · PLAN ══════════════════════ -->
+<section>
+<h2><span class="no">7</span>Sıradaki adımlar</h2>
+
+<h3>Bu hafta · 0 TL</h3>
+<ol>
+  <li><strong>32B'yi bugünkü kartta deneyin.</strong>
+      <code>ollama pull qwen2.5:32b-instruct-q4_K_M</code> (~20 GB).
+      12 GB'a sığmaz, RAM'e taşar, yavaş çalışır — ama <em>cevabın kalitesi</em>
+      3090'da alacağınızla aynıdır.</li>
+  <li><strong>Kör karşılaştırmayı çalıştırın:</strong>
+      <code>jarvis-karsilastir qwen2.5:14b-instruct qwen2.5:32b-instruct-q4_K_M</code>.
+      Model adlarını görmeden 12 soruda tercih yapın, sonra anahtara bakın.</li>
+  <li><strong>Anakart modelini ve PSU watt'ını öğrenin</strong> —
+      <code>sudo dmidecode -t baseboard</code> ve kasanın içindeki etiket.</li>
+</ol>
+
+<div class="box good">
+  <span class="lbl">Karar kuralı</span>
+  <p>Kör karşılaştırmada 32B <strong>12 sorunun en az 8'inde</strong> açık ara iyiyse
+     Katman 1'i alın. Başa başsa <strong>almayın</strong> — 14B işinizi görüyor,
+     62.000 TL'yi RAG ve vaka kaydı için harcanacak zamana ayırın.</p>
+</div>
+
+<h3>Alım sırası</h3>
+<table>
+  <thead><tr><th>Sıra</th><th>Ne</th><th class="num">TL</th><th>Neden bu sırada</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Ekran kartı + PSU + SSD</td><td class="num">62.000</td>
+        <td>Zekâ buradan geliyor; gerisi görünüş ve konfor</td></tr>
+    <tr><td>2</td><td>Kasa + fan + riser + iç ekran</td><td class="num">27.900</td>
+        <td>Kart elde varken tek seferde monte edilir</td></tr>
+    <tr><td>3</td><td>RAM + harici disk + soğutucu</td><td class="num">16.500</td>
+        <td>İhtiyaç hissettikçe, acelesi yok</td></tr>
+    <tr><td>4</td><td>Hologram</td><td class="num">9.000</td>
+        <td>Sistem çalışırken hafta sonu projesi</td></tr>
+  </tbody>
+</table>
+
+<h3>Yazılım tarafı — ben ne yapacağım</h3>
+<table>
+  <thead><tr><th>İş</th><th>Donanım şartı</th><th>Durum</th></tr></thead>
+  <tbody>
+    <tr><td>Panele "hologram modu" (yalnızca Core)</td><td>Yok</td><td>Bugün yapılabilir</td></tr>
+    <tr><td>Panele fotoğraf yükleme</td><td>Yok</td><td>Bugün yapılabilir</td></tr>
+    <tr><td>Ajanda / iş takibi modülü</td><td>Yok</td><td>Bugün yapılabilir</td></tr>
+    <tr><td>RAG (Chroma + bge-m3)</td><td>24 GB tercih edilir</td><td>Katman 1 sonrası</td></tr>
+    <tr><td>Vaka kaydı (Diagnostic Brain)</td><td>Yok</td><td>RAG ile birlikte</td></tr>
+    <tr><td>Görü modeli entegrasyonu</td><td>24 GB şart</td><td>Katman 1 sonrası</td></tr>
+    <tr><td>Telefonda mikrofon (HTTPS)</td><td>Yok</td><td>Tailscale kurulunca</td></tr>
+  </tbody>
+</table>
+
+<div class="box info">
+  <span class="lbl">Dikkat: üç iş donanım beklemiyor</span>
+  <p>Ajanda modülü, panele fotoğraf yükleme ve hologram modu <strong>bugün
+     yapılabilir.</strong> Kart almayı ertelerseniz bile bunlarla ilerleyebiliriz —
+     hangisini önce istersiniz?</p>
+</div>
+</section>
+
+<!-- ══════════════════════ EK ══════════════════════ -->
+<section>
+<h2>Ek · Fiyat kaynakları ve varsayımlar</h2>
+<table>
+  <thead><tr><th>Kalem</th><th class="num">Fiyat</th><th>Kaynak / not</th></tr></thead>
+  <tbody>
+    <tr><td>RTX 3090 24 GB (ikinci el)</td><td class="num">38.000 TL</td><td>ABD 2.el ort. 820 $ · TR ilan ortalaması</td></tr>
+    <tr><td>Lian Li O11 Dynamic EVO XL</td><td class="num">14.999 TL</td><td>Akakçe / n11, 2026</td></tr>
+    <tr><td>Hyte Y70 (alternatif kasa)</td><td class="num">17.139 TL</td><td>TR perakende, 2026</td></tr>
+    <tr><td>1 TB Gen4 NVMe</td><td class="num">8.999 TL</td><td>incehesap · 2 TB için ×~1,7</td></tr>
+    <tr><td>80+ Platinum PSU (giriş)</td><td class="num">7.289 TL</td><td>Sinerji · 850 W Gold benzer bant</td></tr>
+    <tr><td>Elektrik, mesken kademe 2</td><td class="num">4,32 TL/kWh</td><td>EPDK, Nisan 2026</td></tr>
+    <tr><td>USD/TRY</td><td class="num">48,02</td><td>22 Ağustos 2026</td></tr>
+  </tbody>
+</table>
+
+<h3>Teknik varsayımlar</h3>
+<ul>
+  <li>Qwen2.5 32B Q4_K_M ≈ 19-20 GB ağırlık + ~2 GB bağlam (8k pencere)</li>
+  <li>RTX 3090 üzerinde 32B Q4 ≈ 25-30 token/sn (tam VRAM'e sığdığında)</li>
+  <li>Whisper small int8_float16 ≈ 0,6 GB · bge-m3 ≈ 1,1 GB</li>
+  <li>Qwen2.5-VL 7B Q4 ≈ 6 GB — 32B ile aynı anda sığmaz</li>
+  <li>32B QLoRA ince ayarı ≈ 40 GB+ · 24 GB'da yapılamaz</li>
+  <li>Tek 3090 sistemi tepe güç ≈ 550 W · boşta ≈ 90-120 W</li>
+</ul>
+
+<div class="box warn">
+  <span class="lbl">Uyarı</span>
+  <p>Bellek ve ekran kartı fiyatları 2026'da <strong>haftalık</strong> oynuyor
+     (DDR5 endeksi Temmuz 2025'e göre ≈4,9 kat). Bu tablolar karar vermek için
+     yeterli, sipariş vermek için değil — alım gününde doğrulayın.</p>
+  <p><strong>İkinci el 3090 alırken:</strong> 20 dk yük testi yapın,
+     <code>nvidia-smi -q -d TEMPERATURE</code> ile bellek sıcaklığına bakın.
+     Yükte &gt;100°C ise termal pedler bitmiştir — pazarlık payıdır, ret sebebi değil.</p>
+</div>
+</section>
+
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "_aciklama": [
+    "J.A.R.V.I.S.'in sahibi. Boş bir veritabanı ilk açılışta buradan doldurulur.",
+    "Kurulum sırasında 'jarvis-tanit --kur' çalıştırmayı hatırlamak gerekiyordu;",
+    "hatırlanmadığı için J.A.R.V.I.S. aylarca kimseyi tanımadı. Artık dosya yeter.",
+    "",
+    "Değiştirmek için: bu dosyayı düzenleyip 'jarvis-tanit --tohum' çalıştırın.",
+    "Veritabanında zaten bir kimlik varsa bu dosya HİÇBİR ŞEY yapmaz —",
+    "'jarvis-tanit --kur' ile verdiğiniz bilgi buranın üstüne yazılmaz."
+  ],
+
+  "name": "Oğuz Kayır",
+  "address_forms": ["Oğuz Bey", "Efendim"],
+  "role": "tasarımcısı ve geliştiricisi",
+  "profession": "bilgisayar teknisyeni (teknik servis)",
+  "response_style": "Teknik ve ayrıntılı; basit sorularda kısa ve net. Her zaman Türkçe.",
+  "notes": "",
+  "share_with_cloud": true
+}

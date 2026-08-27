@@ -1,0 +1,64 @@
+# Derleme arka ucu ACIKCA yaziliyor. Yazilmadiginda setuptools depo
+# kokunu kendi tariyor ve "windows" klasorunu de bir paket sanip
+#
+#     Multiple top-level packages discovered in a flat-layout:
+#     ['jarvis', 'windows']
+#
+# ile duruyor. Bu hata yalnizca TEMIZ bir kurulumda cikiyor: windows/
+# klasoru eklenmeden once kurulmus bir ortam calismaya devam ediyor, yani
+# gelistirme makinesinde hicbir belirti vermeden yeni makinede patliyor.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+# Paketlenecek olan yalnizca jarvis. windows/ (baslatici kaynagi), tests/
+# ve docs/ pakete girmiyor.
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+
+[project]
+name = "jarvis"
+version = "2.0.1"
+description = "J.A.R.V.I.S. 2.0.1 — ElevenLabs-first personal AI assistant"
+requires-python = ">=3.10"
+dependencies = [
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "Pillow>=10.0"]
+# Mikrofon. Kasten isteğe bağlı: kurulu değilse J.A.R.V.I.S. yine çalışır,
+# yalnızca mikrofon kapalı olur — birkaç yüz MB'lık model indirmesi ve
+# CTranslate2 bağımlılığı herkesin ödemesi gereken bir bedel değil.
+mikrofon = ["faster-whisper>=1.0"]
+# Kamera. Aynı gerekçeyle isteğe bağlı. Sürüm 5'in altına sabit: OpenCV 5,
+# yüz kaskadını ve birlikte gelen modelleri ana tekerlekten çıkardı, 4.x ise
+# ikisini de indirmeden getiriyor.
+kamera = ["opencv-python-headless>=4.8,<5"]
+# Bilgi tabanı. Gömme modeli Ollama'da çalıştığı için ek servis yok; numpy
+# yalnızca vektör karşılaştırmasını hızlandırıyor. Kurulu değilse arama saf
+# Python'a düşer — birkaç bin parçada fark edilmez, on binlerce parçada eder.
+bilgi = ["numpy>=1.24"]
+# Ücretsiz seslendirme. İki ayrı ödünleşme, ikisi de anahtarsız:
+#   edge  — Microsoft'un nöral sesleri. Ölçülen anlaşılırlık 0.87; ama
+#           metin makineden çıkıyor ve resmî olmayan bir uç kullanıyor.
+#   piper — 63 MB'lık modelle CPU'da, internetsiz. Aynı ölçümde 0.85, ama
+#           tonlaması belirgin biçimde daha yapay.
+# (Ölçüm yöntemi: jarvis/voice/soyleyis.py)
+ses = ["edge-tts>=7.0"]
+ses-yerel = ["piper-tts>=1.2"]
+# YOLO nesne algılama. Model ağırlığı ilk kullanımda ayrıca indirilir.
+gorsel = ["ultralytics>=8.3", "opencv-python-headless>=4.8,<5"]
+# Explicit opt-in biometric identity support; raw frames are never persisted.
+yuz = ["face-recognition>=1.3", "Pillow>=10.0"]
+
+[project.scripts]
+jarvis = "jarvis.__main__:main"
+jarvis-ses = "jarvis.voice.cli:main"
+jarvis-panel = "jarvis.web.cli:main"
+jarvis-tanit = "jarvis.core.identity_cli:main"
+jarvis-karsilastir = "jarvis.eval.cli:main"
+jarvis-bilgi = "jarvis.rag.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,21 @@
+# Model karşılaştırma soruları — teknik servis
+#
+# Bu sorular kasten "bilgi" değil "muhakeme" ölçüyor: cevabı ezberden
+# bilinebilecek sorular büyük ve küçük modeli ayırt etmez. Ayırt eden şey,
+# belirsiz bir belirtiden doğru sıraya inebilmek.
+#
+# Kendi işinizden gerçek vakalar ekleyin — asıl kıymetli test o olur.
+# Satır başına bir soru. # ile başlayan satırlar atlanır.
+
+Masaüstü bilgisayar açılıyor, fanlar dönüyor ama görüntü yok. Anakartın DRAM LED'i sabit yanıyor. Hangi sırayla ne kontrol ederim, her adımda neyi elediğimi de söyle.
+Laptop şarja takılı ama yüzde sıfırda kalıyor, adaptör normalden fazla ısınıyor. Olası nedenleri en olasıdan en az olasıya sırala ve her biri için tek bir ayırt edici test ver.
+NVMe SSD BIOS'ta görünüyor ama Windows kurulumunda disk listesinde çıkmıyor. Bunun birbirinden farklı üç nedeni olabilir; hangileri ve nasıl ayırt ederim?
+Masaüstü rastgele yeniden başlıyor, Olay Görüntüleyici'de yalnızca Kernel-Power 41 var. Bu kayıt tek başına ne söyler, ne söylemez? Nasıl daraltırım?
+Ryzen 5 5600 ve B450 anakart. RAM 3200 MHz, XMP/DOCP açınca POST vermiyor, kapatınca 2133'te açılıyor. Sırayla ne denerim?
+Ekran kartının fanları açılışta tam hızda dönüyor ve öyle kalıyor, görüntü yok, kart ısınmıyor. Bu belirti kombinasyonu neyi işaret eder?
+Müşteri "virüs var" diyor ama tek şikâyeti yavaşlık. Kötü amaçlı yazılımı, donanım kaynaklı yavaşlıktan ve yazılım şişkinliğinden nasıl ayırt ederim?
+SMART değerlerinde Reallocated_Sector_Ct 40 ve Current_Pending_Sector 8 görünüyor, disk hâlâ çalışıyor. Müşteriye ne söylemeliyim, disk değişmeli mi?
+Bir bilgisayarda 2x8 GB 2666 MHz RAM var, anakart 3200 destekliyor. Üzerine 3200 MHz bir modül eklersem ne olur ve neden?
+Anakart değişiminden sonra Windows INACCESSIBLE_BOOT_DEVICE mavi ekranı veriyor. Sebebi nedir ve veriyi kaybetmeden nasıl çözülür?
+Bilgisayar birkaç dakika sonra kapanıyor, işlemci sıcaklığı 95 dereceye çıkıyor. Soğutucu yeni takıldı. Nerede hata yapılmış olabilir?
+Güç kaynağının bozuk olduğundan şüpheleniyorum ama elimde yedek PSU yok. Sökmeden hangi belirtilerle daraltabilirim?

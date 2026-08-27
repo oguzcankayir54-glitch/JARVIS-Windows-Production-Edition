@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>J.A.R.V.I.S. — Donanım ve Bütçe Raporu</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+
+  :root{
+    --ink:#101820; --ink-2:#33454f; --ink-3:#5d7280; --ink-4:#8ea3b0;
+    --line:#d8e2e8; --line-2:#b6c8d3;
+    --cyan:#0a7ea4; --cyan-bg:#eef8fc;
+    --amber:#9a6400; --amber-bg:#fff7e6;
+    --red:#b3202f;  --red-bg:#fdeef0;
+    --green:#1c7a4f; --green-bg:#eefaf3;
+    --mono:"SFMono-Regular",Menlo,Consolas,monospace;
+  }
+
+  *{box-sizing:border-box}
+  html{font-size:9.8pt}
+  body{
+    margin:0; color:var(--ink); background:#fff;
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    line-height:1.44; -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+
+  /* ---------- kapak ---------- */
+  .cover{
+    height:245mm; display:flex; flex-direction:column; justify-content:center;
+    page-break-after:always; text-align:left;
+  }
+  .cover .eyebrow{
+    font-size:9pt; letter-spacing:3px; text-transform:uppercase;
+    color:var(--cyan); font-weight:700; margin-bottom:10mm;
+  }
+  .cover h1{
+    font-size:30pt; line-height:1.12; margin:0 0 6mm; font-weight:700;
+    letter-spacing:-.5px;
+  }
+  .cover .sub{ font-size:13pt; color:var(--ink-2); margin:0 0 14mm; max-width:135mm }
+  .cover .rule{ height:3px; width:38mm; background:var(--cyan); margin-bottom:12mm }
+  .cover dl{ display:grid; grid-template-columns:34mm 1fr; gap:2.5mm 6mm; margin:0; font-size:10pt }
+  .cover dt{ color:var(--ink-3); font-weight:600 }
+  .cover dd{ margin:0; color:var(--ink) }
+  .cover .foot{ margin-top:auto; font-size:8.5pt; color:var(--ink-4); border-top:1px solid var(--line); padding-top:4mm }
+
+  /* ---------- başlıklar ---------- */
+  h2{
+    font-size:15pt; margin:0 0 4mm; padding-bottom:2.5mm; font-weight:700;
+    border-bottom:2px solid var(--cyan); letter-spacing:-.2px;
+    page-break-after:avoid;
+  }
+  h2 .no{ color:var(--cyan); margin-right:3mm }
+  h3{ font-size:11.5pt; margin:5.5mm 0 2mm; font-weight:700; color:var(--ink); page-break-after:avoid }
+  h4{ font-size:10pt; margin:5mm 0 1.5mm; font-weight:700; color:var(--ink-2); page-break-after:avoid }
+  section{ page-break-before:always }
+  section.cont{ page-break-before:auto }
+  p{ margin:0 0 2.4mm }
+  ul,ol{ margin:0 0 2.4mm; padding-left:5.5mm }
+  li{ margin-bottom:1mm }
+  strong{ font-weight:700 }
+  code{ font-family:var(--mono); font-size:8.6pt; background:#f0f4f7; padding:.5mm 1.2mm; border-radius:2px }
+
+  /* ---------- tablolar ---------- */
+  table{ width:100%; border-collapse:collapse; margin:2.5mm 0 4mm; font-size:8.8pt; page-break-inside:avoid }
+  th{
+    text-align:left; padding:2mm 2.5mm; background:var(--ink); color:#fff;
+    font-weight:600; font-size:8.2pt; letter-spacing:.3px;
+  }
+  td{ padding:1.6mm 2.5mm; border-bottom:1px solid var(--line); vertical-align:top }
+  tr:nth-child(even) td{ background:#fafcfd }
+  td.num,th.num{ text-align:right; font-family:var(--mono); font-size:8.4pt; white-space:nowrap }
+  tfoot td{ font-weight:700; border-top:2px solid var(--ink); border-bottom:none; background:#f2f7fa !important }
+  .tbl-note{ font-size:8pt; color:var(--ink-3); margin:-3mm 0 5mm }
+
+  /* ---------- kutular ---------- */
+  .box{ border-left:3px solid var(--line-2); padding:2.8mm 4mm; margin:3.5mm 0; page-break-inside:avoid; background:#fafcfd }
+  .box p:last-child{ margin-bottom:0 }
+  .box .lbl{ font-size:8pt; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; display:block; margin-bottom:1.5mm }
+  .box.warn{ border-color:#e0a30a; background:var(--amber-bg) } .box.warn .lbl{ color:var(--amber) }
+  .box.crit{ border-color:var(--red);  background:var(--red-bg) }  .box.crit .lbl{ color:var(--red) }
+  .box.good{ border-color:#2aa06a; background:var(--green-bg) }    .box.good .lbl{ color:var(--green) }
+  .box.info{ border-color:var(--cyan); background:var(--cyan-bg) } .box.info .lbl{ color:var(--cyan) }
+
+  .lead{ font-size:11pt; color:var(--ink-2); margin-bottom:5mm }
+
+  /* ---------- rozetler ---------- */
+  .tag{ display:inline-block; font-size:7.4pt; font-weight:700; letter-spacing:.6px;
+        padding:.6mm 1.8mm; border-radius:2px; text-transform:uppercase; vertical-align:1px }
+  .tag.ok{ background:var(--green-bg); color:var(--green); border:1px solid #b6e3cd }
+  .tag.no{ background:var(--red-bg);  color:var(--red);  border:1px solid #f2c4ca }
+  .tag.mid{ background:var(--amber-bg); color:var(--amber); border:1px solid #f0dcb0 }
+  .tag.src{ background:#eef2f5; color:var(--ink-3); border:1px solid var(--line) }
+
+  /* ---------- yol kartları ---------- */
+  .path{ border:1px solid var(--line-2); border-radius:3px; padding:4mm; margin:4mm 0; page-break-inside:avoid }
+  .path.pick{ border-color:var(--cyan); border-width:2px; background:var(--cyan-bg) }
+  .path h3{ margin:0 0 1mm; display:flex; align-items:baseline; gap:3mm }
+  .path .price{ margin-left:auto; font-family:var(--mono); font-size:11pt; color:var(--cyan); font-weight:700 }
+  .path .verdict{ font-size:9pt; color:var(--ink-2); margin:0 0 3mm }
+  .path table{ margin-bottom:0 }
+
+  .kv{ display:grid; grid-template-columns:auto 1fr; gap:.8mm 4mm; font-size:9pt; margin:1.5mm 0 2.5mm }
+  .kv dt{ color:var(--ink-3) } .kv dd{ margin:0; font-weight:600 }
+
+  .fanmap{ font-family:var(--mono); font-size:8.4pt; background:#f5f9fb; border:1px solid var(--line);
+           padding:3mm; white-space:pre; line-height:1.35; margin:3mm 0 }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ KAPAK ═══════════════════ -->
+<div class="cover">
+  <div class="eyebrow">J.A.R.V.I.S. · Faz 6 Planlama</div>
+  <h1>Donanım ve Bütçe Raporu</h1>
+  <div class="rule"></div>
+  <p class="sub">70 milyar parametreli bir yerel modeli çalıştıracak fiziksel makinenin
+     bileşen analizi, dört satın alma yolu, cam kasa termal planı ve
+     gerçek piyasa fiyatlarıyla toplam maliyet.</p>
+  <dl>
+    <dt>Hazırlayan</dt><dd>J.A.R.V.I.S. proje ekibi</dd>
+    <dt>Tarih</dt><dd>23 Ağustos 2026</dd>
+    <dt>Fiyat kaynağı</dt><dd>Türkiye perakende, Ağustos 2026</dd>
+    <dt>Kur varsayımı</dt><dd>1 USD = 48,0 TL</dd>
+    <dt>Durum</dt><dd>Karar bekliyor</dd>
+  </dl>
+  <div class="foot">
+    Bu belgedeki fiyatlar araştırma tarihindeki ilan fiyatlarıdır ve teklif değildir.
+    Bellek piyasası 2026'da haftalık oynuyor — satın almadan önce doğrulayın.
+  </div>
+</div>
+
+<!-- ═══════════════════ 0 · DÜZELTMELER ═══════════════════ -->
+<section class="cont">
+<h2><span class="no">0</span>Başlamadan üç düzeltme</h2>
+<p class="lead">Bütçenin tamamı bu üç maddeye dayanıyor. Katılmadığınız varsa
+   önce onu konuşalım, sonra rakamlara geçelim.</p>
+
+<div class="box crit">
+  <span class="lbl">Düzeltme 1 — Ölçek</span>
+  <p><strong>"60-70 milyon parametre" büyük olasılıkla "60-70 milyar" olacaktı.</strong>
+     70 milyon parametreli bir model, şu anda çalıştırdığınız <code>qwen2.5:14b</code>'den
+     (14 <em>milyar</em>) 200 kat küçüktür — telefonda çalışan, sohbet edemeyen bir oyuncak.
+     Böyle bir hedef için yeni donanım almanız gerekmez; mevcut makineniz fazlasıyla yeter.</p>
+  <p>Bu rapor <strong>70 milyar</strong> üzerine kuruldu. Bu gerçek ve tanımlı bir sınıf:
+     Llama 3.3 70B, Qwen2.5 72B. Daha önce sorduğunuz "86 milyar nöron" da bu bölgeydi.</p>
+</div>
+
+<div class="box warn">
+  <span class="lbl">Düzeltme 2 — Öncelik sırası</span>
+  <p>Sıralamanız <em>anakart, RAM, işlemci, ekran kartı, SSD</em> şeklindeydi.
+     Dil modeli çalıştırmak için bu sıra neredeyse tersine dönmeli.</p>
+  <p><strong>Belirleyici tek şey VRAM'dir.</strong> Model ağırlıkları ekran kartı belleğine
+     sığıyorsa hızlı çalışır; sığmıyorsa sistem RAM'ine taşar ve <strong>10-20 kat</strong>
+     yavaşlar. Anakart, işlemci ve sistem RAM'i bu işte yalnızca "yeterli olsun" kalemleridir —
+     onlara harcanan her lira, VRAM'den çalınmış liradır.</p>
+  <p>Bütçenin <strong>%60-75'i ekran kartına</strong> gitmeli. Aşağıdaki tablolar bu ilkeye göre kuruldu.</p>
+</div>
+
+<div class="box crit">
+  <span class="lbl">Düzeltme 3 — Zamanlama</span>
+  <p><strong>Ağustos 2026, bellek satın almak için son on yılın en kötü anı.</strong>
+     Yapay zeka veri merkezleri DRAM ve NAND üretiminin tamamını sözleşmeye bağladı;
+     tüketici tarafında fiyatlar patladı:</p>
+  <ul>
+    <li>DDR5 fiyat endeksi Temmuz 2025'e göre <strong>≈4,9 kat</strong> (Ağustos 2026'da %486)</li>
+    <li>NVIDIA RTX PRO 6000 96&nbsp;GB: 8.565&nbsp;$ → <strong>16.000&nbsp;$</strong> (17 ayda ≈%90 artış, GDDR7 kıtlığı)</li>
+    <li>Apple, Mac Studio'nun <strong>512&nbsp;GB seçeneğini kaldırdı</strong>, 256&nbsp;GB'ı 400&nbsp;$ zamladı</li>
+    <li>Türkiye'de 1&nbsp;TB Gen4 NVMe ≈ <strong>9.000&nbsp;TL</strong>; 96&nbsp;GB DDR5 kit ≈ <strong>103.000&nbsp;TL</strong></li>
+  </ul>
+  <p>Bu, "beklemeyin, alın" demek değil — tersini de söylemiyorum, çünkü kıtlığın ne zaman
+     biteceğini kimse bilmiyor. Söylediğim şu: <strong>bu dönemde RAM ve SSD'yi minimumda
+     tutan, parayı VRAM'e yığan bir plan yapın.</strong> Yol B tam olarak budur.</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 1 · HEDEF ═══════════════════ -->
+<section>
+<h2><span class="no">1</span>70B ne demek — VRAM matematiği</h2>
+<p>Bir modelin bellekte kapladığı yer, parametre sayısı × parametre başına bayt kadardır.
+   "Nicemleme" (quantization) her parametreyi daha az bitle saklamaktır: yer kazandırır,
+   karşılığında biraz kalite alır.</p>
+
+<table>
+  <thead><tr>
+    <th>Nicemleme</th><th class="num">70B ağırlık</th><th class="num">+ bağlam (8k)</th>
+    <th class="num">Gereken VRAM</th><th>Kalite</th><th>Kaç kart?</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>FP16 (ham)</td><td class="num">141 GB</td><td class="num">~6 GB</td><td class="num">147 GB</td>
+        <td>referans</td><td>Erişilemez</td></tr>
+    <tr><td>Q8</td><td class="num">~75 GB</td><td class="num">~4 GB</td><td class="num">79 GB</td>
+        <td>ayırt edilemez</td><td>4× 24 GB</td></tr>
+    <tr><td>Q5_K_M</td><td class="num">~50 GB</td><td class="num">~3 GB</td><td class="num">53 GB</td>
+        <td>çok iyi</td><td>3× 24 GB</td></tr>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>Q4_K_M</strong></td>
+        <td class="num">43-45 GB</td><td class="num">~3 GB</td><td class="num"><strong>46-48 GB</strong></td>
+        <td><strong>tatlı nokta</strong></td><td><strong>2× 24 GB</strong></td></tr>
+    <tr><td>Q3</td><td class="num">26-38 GB</td><td class="num">~2 GB</td><td class="num">28-40 GB</td>
+        <td>gözle görülür bozulma</td><td>2× 16-24 GB</td></tr>
+    <tr><td>Q2</td><td class="num">~22 GB</td><td class="num">~2 GB</td><td class="num">24 GB</td>
+        <td>ciddi bozulma</td><td>1× 24 GB</td></tr>
+  </tbody>
+</table>
+<p class="tbl-note">Kaynak: Llama 3.3 70B Q4_K_M ölçümleri (2026). Bağlam belleği (KV cache)
+   pencere büyüdükçe hızla artar; 32k bağlam için +10-12 GB ekleyin.</p>
+
+<div class="box info">
+  <span class="lbl">Çıkarım</span>
+  <p><strong>Hedef 48 GB VRAM.</strong> Bunun altına inmek 70B'yi ya imkânsız ya da
+     anlamsız kılıyor: Q2'de model 70B olmaktan çıkıp kötü bir 30B gibi davranır.
+     Hiçbir tek tüketici kartı 48 GB vermiyor — bu yüzden <strong>iki kart</strong> konuşacağız.</p>
+</div>
+
+<h3>Peki 70B gerçekten gerekli mi?</h3>
+<p>Dürüst cevap: <strong>yaptığınız iş için muhtemelen değil.</strong> Teknik servis
+   teşhisi, donanım yorumu ve Türkçe sohbet için 30-32B sınıfı modeller (Qwen2.5 32B,
+   Gemma 3 27B) 70B'ye çok yakın sonuç veriyor ve <strong>tek 24 GB kartta</strong> rahat
+   çalışıyorlar. 70B'nin gerçek üstünlüğü uzun akıl yürütme zincirlerinde ve nadir bilgide.</p>
+<p>Bunu şunun için söylüyorum: 32B hedeflerseniz bütçe <strong>üçte birine</strong> düşüyor.
+   Aşağıda Yol A tam olarak bu.</p>
+</section>
+
+<!-- ═══════════════════ 2 · MEVCUT ═══════════════════ -->
+<section>
+<h2><span class="no">2</span>Bugünkü makineniz nerede duruyor</h2>
+
+<table>
+  <thead><tr><th>Bileşen</th><th>Mevcut</th><th>70B için değerlendirme</th></tr></thead>
+  <tbody>
+    <tr><td>Ekran kartı</td><td>Zotac RTX 3080 Ti · 12 GB</td>
+        <td><span class="tag no">Yetersiz</span> 70B'nin dörtte biri sığar</td></tr>
+    <tr><td>İşlemci</td><td>Ryzen 7 5800X · 8C/16T</td>
+        <td><span class="tag ok">Yeterli</span> çıkarımda CPU neredeyse boşta durur</td></tr>
+    <tr><td>Sistem RAM</td><td>32 GB DDR4</td>
+        <td><span class="tag mid">Sınırda</span> model yüklenirken tampon; 64 GB rahatlatır</td></tr>
+    <tr><td>Anakart</td><td>AM4 · PCIe 4.0</td>
+        <td><span class="tag mid">Kontrol edilmeli</span> iki kart için x8/x8 bölünmesi şart</td></tr>
+    <tr><td>Depolama</td><td>Mevcut SSD</td>
+        <td><span class="tag mid">Sınırda</span> 70B Q4 tek başına ~45 GB yer kaplar</td></tr>
+    <tr><td>Güç kaynağı</td><td>Bilinmiyor</td>
+        <td><span class="tag no">Öğrenilmeli</span> iki kart için 1000 W+ gerekir</td></tr>
+  </tbody>
+</table>
+
+<div class="box warn">
+  <span class="lbl">Önce şunu öğrenmeliyiz</span>
+  <p>Satın alma listesi çıkarmadan önce iki bilgi lazım, ikisi de beş dakikalık iş:</p>
+  <ol>
+    <li><strong>Anakart modeli</strong> — ikinci PCIe x16 yuvası var mı, x8/x8 bölünüyor mu?
+        Bazı B550 kartlarda ikinci yuva yalnızca x4'tür; çift kart orada anlamlı çalışmaz.</li>
+    <li><strong>Güç kaynağı markası ve watt'ı</strong> — kasanın yan kapağını açıp
+        etiketi okumak yeterli.</li>
+  </ol>
+  <p>Bu ikisi, Yol A ve Yol B'nin toplam maliyetini <strong>20.000-40.000 TL</strong>
+     aralığında değiştirir.</p>
+</div>
+
+<h3>3080 Ti'yi ikinci kart olarak kullanabilir miyiz?</h3>
+<p>Teorik olarak evet, pratikte <strong>önermiyorum.</strong> 12 GB + 24 GB = 36 GB eder;
+   Q4 70B'nin istediği 46-48 GB'ı karşılamaz. Üstelik farklı hızdaki iki kart birlikte
+   çalışırken <strong>yavaş olan hızı belirler</strong> ve NVLink kurulamaz.</p>
+<p>3080 Ti'nin doğru yeri: <strong>ikinci makinede kalmak</strong>, ya da satılıp yeni
+   kartın maliyetinden düşülmek. Ağustos 2026 piyasasında 12 GB'lık bir kart hâlâ iyi para ediyor.</p>
+</section>
+
+<!-- ═══════════════════ 3 · DÖRT YOL ═══════════════════ -->
+<section>
+<h2><span class="no">3</span>Dört yol</h2>
+<p class="lead">Aynı hedefe giden dört ayrı rota. Fiyatlar Ağustos 2026 Türkiye
+   perakendesi; ikinci el kalemler ilan ortalamasıdır.</p>
+
+<!-- YOL A -->
+<div class="path">
+  <h3>Yol A — 32B sınıfı <span class="price">≈ 55.000 TL</span></h3>
+  <p class="verdict">Mevcut makineye tek bir 24 GB kart eklemek. 70B çalıştırmaz;
+     32B'yi mükemmel çalıştırır. <strong>Paranın karşılığını en iyi veren yol.</strong></p>
+  <table>
+    <thead><tr><th>Kalem</th><th>Seçim</th><th class="num">TL</th></tr></thead>
+    <tbody>
+      <tr><td>Ekran kartı</td><td>RTX 3090 24 GB (ikinci el)</td><td class="num">38.000</td></tr>
+      <tr><td>Güç kaynağı</td><td>1000 W 80+ Gold</td><td class="num">9.000</td></tr>
+      <tr><td>Depolama</td><td>2 TB Gen4 NVMe</td><td class="num">15.000</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="2">Toplam</td><td class="num">62.000</td></tr></tfoot>
+  </table>
+  <dl class="kv">
+    <dt>Çalışan model</dt><dd>Qwen2.5 32B Q4 · ~25-30 token/sn</dd>
+    <dt>70B durumu</dt><dd>Yalnızca Q2 — önerilmez</dd>
+    <dt>Kasa değişimi</dt><dd>Gerekmez (cam kasa isterseniz +20.000 TL)</dd>
+  </dl>
+</div>
+
+<!-- YOL B -->
+<div class="path pick">
+  <h3>Yol B — Çift RTX 3090 + NVLink <span class="price">≈ 135.000 TL</span></h3>
+  <p class="verdict"><strong>ÖNERİLEN.</strong> 48 GB birleşik VRAM. 70B Q4 tam olarak sığar.
+     Bugünkü piyasada 70B'ye giden <strong>tek makul maliyetli yol.</strong></p>
+  <table>
+    <thead><tr><th>Kalem</th><th>Seçim</th><th class="num">TL</th></tr></thead>
+    <tbody>
+      <tr><td>Ekran kartı ×2</td><td>RTX 3090 24 GB (ikinci el, aynı model)</td><td class="num">76.000</td></tr>
+      <tr><td>NVLink köprüsü</td><td>3-slot NVLink (3090'a özel)</td><td class="num">3.500</td></tr>
+      <tr><td>Anakart</td><td>Mevcut yeterliyse 0; değilse X870E Tomahawk</td><td class="num">0-17.500</td></tr>
+      <tr><td>Güç kaynağı</td><td>1200 W 80+ Platinum</td><td class="num">14.000</td></tr>
+      <tr><td>Kasa</td><td>Lian Li O11 Dynamic EVO XL (cam)</td><td class="num">15.000</td></tr>
+      <tr><td>Fan ×7</td><td>120 mm PWM, yüksek statik basınç</td><td class="num">5.500</td></tr>
+      <tr><td>Depolama</td><td>2 TB Gen4 NVMe</td><td class="num">15.000</td></tr>
+      <tr><td>Dikey kart kiti</td><td>PCIe 4.0 riser (ısı ayrımı için)</td><td class="num">3.000</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="2">Toplam (mevcut anakart yeterliyse)</td><td class="num">132.000</td></tr></tfoot>
+  </table>
+  <dl class="kv">
+    <dt>Çalışan model</dt><dd>Llama 3.3 70B Q4_K_M · ~12-18 token/sn</dd>
+    <dt>Kritik ayrıntı</dt><dd>İki kart <strong>aynı model</strong> olmalı; 3090 Ti'de NVLink yok</dd>
+    <dt>Tepe güç</dt><dd>~850 W</dd>
+  </dl>
+</div>
+
+<!-- YOL C -->
+<div class="path">
+  <h3>Yol C — Çift RTX 5090 <span class="price">≈ 700.000 TL</span></h3>
+  <p class="verdict">64 GB VRAM, sıfır garanti, en yüksek hız. Bugünkü fiyatlarla
+     <strong>paranın karşılığı yok</strong> — Yol B'nin 5 katına ~2 kat hız.</p>
+  <table>
+    <thead><tr><th>Kalem</th><th>Seçim</th><th class="num">TL</th></tr></thead>
+    <tbody>
+      <tr><td>Ekran kartı ×2</td><td>RTX 5090 32 GB (en ucuz varyant)</td><td class="num">374.000</td></tr>
+      <tr><td>İşlemci</td><td>Ryzen 9 9950X</td><td class="num">25.450</td></tr>
+      <tr><td>Anakart</td><td>MSI MAG X870E Tomahawk WiFi</td><td class="num">17.430</td></tr>
+      <tr><td>RAM</td><td>96 GB DDR5-6400 (2×48)</td><td class="num">103.100</td></tr>
+      <tr><td>Depolama</td><td>4 TB Gen4 NVMe</td><td class="num">32.000</td></tr>
+      <tr><td>Güç kaynağı</td><td>1600 W 80+ Platinum</td><td class="num">18.000</td></tr>
+      <tr><td>Kasa + 7 fan</td><td>O11 Dynamic EVO XL</td><td class="num">20.500</td></tr>
+      <tr><td>CPU soğutma</td><td>360 mm AIO</td><td class="num">8.000</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="2">Toplam</td><td class="num">598.480</td></tr></tfoot>
+  </table>
+  <dl class="kv">
+    <dt>Çalışan model</dt><dd>70B Q5 rahat · 32k bağlam · ~35-45 token/sn</dd>
+    <dt>Tepe güç</dt><dd>~1.350 W — evinizde 1,5 kW'lık bir ısıtıcı çalışıyor demektir</dd>
+    <dt>Ana itiraz</dt><dd>RAM kalemi tek başına Yol A'nın tamamından pahalı</dd>
+  </dl>
+</div>
+
+<!-- YOL D -->
+<div class="path">
+  <h3>Yol D — Ryzen AI Max+ 395 mini PC <span class="price">≈ 100.000 TL</span></h3>
+  <p class="verdict">128 GB birleşik bellek, avuç içi kutu, ~120 W. 70B <em>sığar</em>
+     ama <strong>yavaş çalışır.</strong> Cam kasa projesiyle bağdaşmaz.</p>
+  <dl class="kv">
+    <dt>Çalışan model</dt><dd>70B dense Q4 · <strong>5-15 token/sn</strong> (konuşma için sınırda)</dd>
+    <dt>Neden yavaş</dt><dd>Bellek bant genişliği ~210-220 GB/sn — RTX 4090'ın dörtte biri</dd>
+    <dt>Parladığı yer</dt><dd>MoE modeller: Qwen3 30B MoE ~66-72 token/sn</dd>
+    <dt>Cam kasa</dt><dd>Mümkün değil — kapalı bir mini PC, parçalanamaz</dd>
+  </dl>
+  <p style="font-size:9pt;margin-top:2mm">Bunu listeye <strong>dürüstlük için</strong> koydum:
+     yalnızca "70B çalışsın" deseydiniz en akıllı alım bu olurdu. Ama siz aynı zamanda
+     <em>görünen</em> bir makine istiyorsunuz; bu kutu görünmez.</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 4 · KARŞILAŞTIRMA ═══════════════════ -->
+<section>
+<h2><span class="no">4</span>Yan yana karşılaştırma</h2>
+<table>
+  <thead><tr>
+    <th>Ölçüt</th><th>Yol A</th><th>Yol B <span class="tag ok">seçim</span></th><th>Yol C</th><th>Yol D</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>Toplam maliyet</td><td class="num">62.000</td><td class="num">132.000</td><td class="num">598.000</td><td class="num">100.000</td></tr>
+    <tr><td>VRAM</td><td>24 GB</td><td>48 GB</td><td>64 GB</td><td>128 GB (yavaş)</td></tr>
+    <tr><td>70B Q4 çalışır mı</td><td><span class="tag no">Hayır</span></td><td><span class="tag ok">Evet</span></td><td><span class="tag ok">Evet</span></td><td><span class="tag mid">Yavaş</span></td></tr>
+    <tr><td>70B hızı</td><td>—</td><td>12-18 tok/sn</td><td>35-45 tok/sn</td><td>5-15 tok/sn</td></tr>
+    <tr><td>32B hızı</td><td>25-30 tok/sn</td><td>45-60 tok/sn</td><td>90+ tok/sn</td><td>20-25 tok/sn</td></tr>
+    <tr><td>Tepe güç</td><td>~500 W</td><td>~850 W</td><td>~1.350 W</td><td>~120 W</td></tr>
+    <tr><td>Aylık elektrik*</td><td class="num">~380 TL</td><td class="num">~560 TL</td><td class="num">~865 TL</td><td class="num">~150 TL</td></tr>
+    <tr><td>Garanti</td><td><span class="tag no">Yok</span></td><td><span class="tag no">Yok</span></td><td><span class="tag ok">2 yıl</span></td><td><span class="tag ok">2 yıl</span></td></tr>
+    <tr><td>Cam kasa uyumu</td><td><span class="tag ok">İyi</span></td><td><span class="tag mid">Planlama ister</span></td><td><span class="tag mid">Planlama ister</span></td><td><span class="tag no">Yok</span></td></tr>
+    <tr><td>Yükseltme yolu</td><td>3. kart eklenebilir</td><td>Doldu</td><td>Doldu</td><td>Kapalı</td></tr>
+  </tbody>
+</table>
+<p class="tbl-note">* Günde 22 saat boşta + 2 saat tam yük, 4,32 TL/kWh (mesken kademe 2, 2026 EPDK tarifesi).</p>
+
+<div class="box good">
+  <span class="lbl">Karar gerekçesi</span>
+  <p><strong>Yol B</strong>, 70B'ye ulaşan en ucuz yol ve maliyetin %58'i doğrudan VRAM'e gidiyor.
+     Yol C ile arasındaki <strong>466.000 TL</strong> fark, karşılığında yalnızca ~2,5 kat hız
+     ve garanti veriyor. Bu fark, aynı parayla iki yıl boyunca bulut GPU kiralamaya bedel.</p>
+  <p>Ama şunu da açık söyleyeyim: <strong>Yol A'yı ciddiye alın.</strong> 32B modelin sizin
+     iş akışınızda 70B'den ölçülebilir şekilde kötü olduğunu görmeden 70.000 TL fazla
+     harcamanın gerekçesi yok. Yol A'dan Yol B'ye geçmek zaten sadece "ikinci kartı almak".</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 5 · BİLEŞENLER ═══════════════════ -->
+<section>
+<h2><span class="no">5</span>Bileşen bileşen</h2>
+
+<h3>5.1 Ekran kartı — bütçenin kalbi</h3>
+<table>
+  <thead><tr><th>Kart</th><th class="num">VRAM</th><th class="num">TL</th><th class="num">TL/GB</th><th>Not</th></tr></thead>
+  <tbody>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>RTX 3090 (2. el)</strong></td><td class="num">24 GB</td><td class="num">38.000</td><td class="num">1.583</td>
+        <td><strong>NVLink var</strong> — ikili kurulumun tek mantıklı seçeneği</td></tr>
+    <tr><td>RTX 3090 Ti (2. el)</td><td class="num">24 GB</td><td class="num">45.000</td><td class="num">1.875</td>
+        <td><span class="tag no">NVLink yok</span> — 3090'ın gerisinde</td></tr>
+    <tr><td>RTX 4090 (2. el)</td><td class="num">24 GB</td><td class="num">95.000</td><td class="num">3.958</td>
+        <td>Hızlı ama GB başına 2,5 kat pahalı</td></tr>
+    <tr><td>RTX 5090</td><td class="num">32 GB</td><td class="num">187.000</td><td class="num">5.844</td>
+        <td>En hızlı tüketici kartı; GB başına en kötü</td></tr>
+    <tr><td>RTX PRO 6000 Blackwell</td><td class="num">96 GB</td><td class="num">768.000</td><td class="num">8.000</td>
+        <td>Tek kartta 70B Q8; erişilemez fiyat</td></tr>
+  </tbody>
+</table>
+
+<div class="box warn">
+  <span class="lbl">İkinci el 3090 alırken</span>
+  <p>İlanlarda <strong>14.000 TL'ye</strong> kadar inen fiyatlar görünüyor. ABD ikinci el
+     ortalaması ≈820&nbsp;$ (≈39.000 TL). Aradaki fark tesadüf değil:
+     <strong>çok ucuz ilanlar büyük olasılıkla madencilik kartıdır.</strong></p>
+  <p>Servis işi yaptığınız için bunları zaten biliyorsunuz, yine de listeleyeyim:</p>
+  <ul>
+    <li>Termal ped ve macun değişmiş mi — 3090'ın <strong>arka yüz bellekleri</strong> ısınır</li>
+    <li>Yerinde test: 20 dakika <code>furmark</code> + bellek sıcaklığı (<code>nvidia-smi -q -d TEMPERATURE</code>)</li>
+    <li>Bellek sıcaklığı yükte <strong>&gt;100°C</strong> ise pedler bitmiş demektir — pazarlık payı</li>
+    <li>Fatura/kutu varsa değerlidir; yoksa fiyat %15-20 aşağıda olmalı</li>
+  </ul>
+</div>
+
+<h3>5.2 Anakart</h3>
+<p>Tek şart: <strong>iki adet PCIe x16 yuva ve x8/x8 bölünme desteği.</strong>
+   Çıkarımda kartlar arası trafik azdır, x8 fazlasıyla yeter. Pahalı iş istasyonu
+   anakartı (TRX50, ~50.000 TL) <strong>gereksizdir</strong> — 128 PCIe hattı bu iş için
+   harcanmış paradır.</p>
+<table>
+  <thead><tr><th>Model</th><th class="num">TL</th><th>Değerlendirme</th></tr></thead>
+  <tbody>
+    <tr><td>Mevcut AM4 anakartınız</td><td class="num">0</td><td><span class="tag ok">Önce bunu kontrol edin</span> x8/x8 varsa iş biter</td></tr>
+    <tr><td>Gigabyte X870 Gaming X WiFi7</td><td class="num">14.160</td><td>Giriş seviyesi, yeterli</td></tr>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>MSI MAG X870E Tomahawk WiFi</strong></td><td class="num">17.430</td><td><strong>Tatlı nokta</strong> — x8/x8, güçlü VRM</td></tr>
+    <tr><td>ASUS ROG Strix X870E-E</td><td class="num">29.999</td><td>Fazlası; parayı VRAM'e koyun</td></tr>
+    <tr><td>ASUS Pro WS TRX50-SAGE</td><td class="num">50.196</td><td><span class="tag no">Gereksiz</span> 4+ kart kurmayacaksanız</td></tr>
+  </tbody>
+</table>
+
+<h3>5.3 İşlemci</h3>
+<p>Çıkarım sırasında işlemci <strong>%5-10 doluluğu geçmez</strong>. Mevcut 5800X yeterlidir.
+   Anakart değiştirmeniz gerekirse en ucuz uyumlu işlemciyi alın; 9950X almak bu iş için
+   parayı yakmaktır.</p>
+<table>
+  <thead><tr><th>İşlemci</th><th class="num">TL</th><th>70B çıkarımına katkısı</th></tr></thead>
+  <tbody>
+    <tr><td>Mevcut Ryzen 7 5800X</td><td class="num">0</td><td>Yeterli</td></tr>
+    <tr><td>Ryzen 7 9700X</td><td class="num">~14.000</td><td>Ölçülemez fark</td></tr>
+    <tr><td>Ryzen 9 9950X</td><td class="num">25.447</td><td>Ölçülemez fark</td></tr>
+    <tr><td>Threadripper 7960X</td><td class="num">69.644</td><td><span class="tag no">Anlamsız</span></td></tr>
+  </tbody>
+</table>
+
+<h3>5.4 Sistem RAM</h3>
+<div class="box crit">
+  <span class="lbl">2026'nın en pahalı kalemi</span>
+  <p>96 GB DDR5 kit <strong>103.100 TL.</strong> Bu, Yol B'nin ekran kartı bütçesinden
+     fazla. <strong>Şu an RAM almayın.</strong></p>
+  <p>Model ağırlıkları VRAM'de duruyorsa sistem RAM'i yalnızca modeli diskten okuyup
+     karta yüklerken kullanılır. <strong>32 GB bunun için yeter</strong>, 64 GB rahat eder.
+     DDR4'ünüz zaten var ve DDR4 fiyatları DDR5 kadar patlamadı — gerekirse
+     <strong>ikinci el 2×16 GB DDR4</strong> ekleyin, 5.000-8.000 TL.</p>
+</div>
+
+<h3>5.5 M.2 SSD ve harici disk</h3>
+<p>70B Q4 ≈ 45 GB, Q5 ≈ 50 GB; üç-dört model denerseniz 200 GB gider. Ama
+   <strong>hız kritik değildir</strong> — model diskten VRAM'e bir kez okunur.</p>
+<table>
+  <thead><tr><th>Kalem</th><th class="num">TL</th><th>Gerekçe</th></tr></thead>
+  <tbody>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>2 TB Gen4 NVMe</strong></td><td class="num">~15.000</td><td><strong>Yeterli</strong> — sistem + 5-6 model</td></tr>
+    <tr><td>4 TB Gen4 NVMe</td><td class="num">~32.000</td><td>Model arşivi büyüyecekse</td></tr>
+    <tr><td>Gen5 NVMe</td><td class="num">+%40</td><td><span class="tag no">Gereksiz</span> ölçülebilir fayda yok</td></tr>
+    <tr><td>Harici 4 TB HDD (USB 3.2)</td><td class="num">~6.000</td><td><span class="tag ok">Önerilir</span> model arşivi + yedek</td></tr>
+  </tbody>
+</table>
+<p><strong>Harici disk sorunuza cevap: evet, alın — ama SSD değil, HDD.</strong>
+   Kullanılmayan model dosyalarını ve yedekleri orada tutun; pahalı NVMe'yi aktif
+   modellere ayırın. Dönen disk bu iş için üçte bir fiyata aynı işi görür.</p>
+
+<h3>5.6 Güç kaynağı</h3>
+<table>
+  <thead><tr><th>Kurulum</th><th class="num">Tepe güç</th><th class="num">Önerilen PSU</th><th class="num">TL</th></tr></thead>
+  <tbody>
+    <tr><td>Tek 3090</td><td class="num">~500 W</td><td class="num">850-1000 W Gold</td><td class="num">9.000</td></tr>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>Çift 3090</strong></td><td class="num">~850 W</td><td class="num"><strong>1200 W Platinum</strong></td><td class="num">14.000</td></tr>
+    <tr><td>Çift 5090</td><td class="num">~1.350 W</td><td class="num">1600 W Platinum</td><td class="num">18.000</td></tr>
+  </tbody>
+</table>
+<div class="box warn">
+  <span class="lbl">Geçici akım (transient spike)</span>
+  <p>3090 ve 5090 anlık olarak nominal gücünün <strong>2 katına</strong> sıçrar. Etiket
+     watt'ına göre "tam yeter" PSU seçmek yük altında kapanmaya yol açar — tabloda
+     <strong>%40 pay</strong> bıraktım. Ayrıca iki karta <strong>ayrı PCIe kablo hatları</strong>
+     çekin; tek kablonun iki ucunu ("daisy chain") kullanmak en sık görülen çift kart arızasıdır.</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 6 · KASA ═══════════════════ -->
+<section>
+<h2><span class="no">6</span>Cam kasa ve soğutma</h2>
+<p class="lead">İstediğiniz şey — tamamen cam kaplı, 6-7 fanlı, içi görünen bir makine —
+   <strong>yapılabilir.</strong> Ama camın fiziği var ve buna göre planlamak gerekiyor.</p>
+
+<div class="box crit">
+  <span class="lbl">Termal gerçek</span>
+  <p><strong>Cam nefes almaz.</strong> Havanın girip çıkacağı açıklıklar tanımlı olmak zorunda.
+     Dört tarafı kapalı bir cam kutuya iki adet 350 W'lık kart koyarsanız, kartlar
+     <strong>kendi ürettikleri sıcak havayı geri emer</strong> ve sıcaklık 90°C'ye tırmanır.</p>
+  <p>Çözüm cam sayısını azaltmak değil — <strong>doğru cam kasayı seçmek.</strong>
+     Bu iş için tasarlanmış kasalar var.</p>
+</div>
+
+<h3>6.1 Kasa seçimi</h3>
+<table>
+  <thead><tr><th>Kasa</th><th class="num">TL</th><th class="num">Fan yuvası</th><th>Değerlendirme</th></tr></thead>
+  <tbody>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>Lian Li O11 Dynamic EVO XL</strong></td><td class="num">15.000</td><td class="num">10-11</td>
+        <td><strong>Doğru seçim.</strong> Üç yüzü cam, alt+yan+üst havalandırma, E-ATX, çift kart için derinlik yeterli</td></tr>
+    <tr><td>Lian Li O11 Dynamic EVO (standart)</td><td class="num">~11.000</td><td class="num">9</td><td>Daha dar; iki 3-slot kart sıkışır</td></tr>
+    <tr><td>Hyte Y70</td><td class="num">17.139</td><td class="num">7-9</td><td>Güzel ama panel için daha az yer</td></tr>
+    <tr><td>Tam kapalı vitrin tipi cam kasa</td><td class="num">—</td><td class="num">—</td><td><span class="tag no">Almayın</span> hava girişi yok</td></tr>
+  </tbody>
+</table>
+
+<h3>6.2 Yedi fanlı yerleşim planı</h3>
+<p>İstediğiniz 6-7 fan tam olarak doğru sayı. Kritik olan sayı değil, <strong>yön dengesi</strong>:</p>
+
+<div class="fanmap">           ÜST — 2× ÇIKIŞ (sıcak hava yukarı)
+           ↑ ↑
+    ┌──────────────────────┐
+    │   [ CPU / AIO ]      │
+Y   │                      │   Y = YAN, 3× GİRİŞ
+A → │   ═══ GPU 1 ═══      │       (kartların yüzüne
+N → │                      │        doğrudan hava)
+    │   ═══ GPU 2 ═══      │
+  → │        (dikey)       │
+    └──────────────────────┘
+           ↑ ↑
+       ALT — 2× GİRİŞ (temiz, filtreli hava)
+
+    GİRİŞ: 5 fan     ÇIKIŞ: 2 fan     → POZİTİF BASINÇ</div>
+
+<div class="box good">
+  <span class="lbl">Neden pozitif basınç</span>
+  <p>Giriş fanları çıkıştan fazla olunca kasa içinde hafif yüksek basınç oluşur.
+     Hava <strong>yalnızca filtreli girişlerden</strong> girer, çatlaklardan toz emilmez.
+     Cam kasada bu çok önemli: toz camın arkasında birikince göze batar ve
+     her ay temizlik gerektirir.</p>
+</div>
+
+<h3>6.3 İki kartın üst üste gelme sorunu</h3>
+<p>Bu, çift kart kurulumlarının <strong>en yaygın gerçek arızası</strong>. İki kalın kart
+   yan yana takıldığında üsttekinin fanları alttakinin sırtına dayanır; hava alamaz ve
+   <strong>15-20°C daha sıcak</strong> çalışır.</p>
+<p>Üç çözüm, maliyet sırasıyla:</p>
+<table>
+  <thead><tr><th>Çözüm</th><th class="num">TL</th><th>Etki</th></tr></thead>
+  <tbody>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>Alt kartı dikey monte et (riser)</strong></td><td class="num">3.000</td>
+        <td><strong>En iyi oran.</strong> Kartlar arasında 5-8 cm boşluk; hem soğuk hem cam arkasında güzel duruyor</td></tr>
+    <tr><td>Fan eğrisini elle sertleştir</td><td class="num">0</td><td>10-15°C kazandırır, gürültü artar</td></tr>
+    <tr><td>Kartlara AIO su soğutma bloğu</td><td class="num">~25.000</td><td>En serin; garanti biter, montaj riskli</td></tr>
+  </tbody>
+</table>
+<p><strong>Öneri:</strong> dikey montaj. Hem termal sorunu çözüyor hem de sizin istediğiniz
+   görüntüyü veriyor — iki kart cam arkasında yan yana değil, <em>sergilenmiş</em> duruyor.</p>
+
+<h3>6.4 Fan seçimi</h3>
+<p>Radyatör veya filtre arkasına takılan fanlar <strong>yüksek statik basınçlı</strong>
+   olmalı; "yüksek hava akışı" etiketli fanlar açık alanda iyidir, engel arkasında zayıflar.</p>
+<ul>
+  <li>7× 120 mm PWM statik basınç fanı: <strong>5.500 TL</strong> (orta segment)</li>
+  <li>RGB isterseniz +%40; ışık kasanın içini görünür kılacağı için burada işlevsel</li>
+  <li>Anakartta 7 fan başlığı olmayabilir — <strong>PWM çoğaltıcı (hub)</strong> alın, ~400 TL</li>
+</ul>
+</section>
+
+<!-- ═══════════════════ 7 · GÖRÜNTÜ ═══════════════════ -->
+<section>
+<h2><span class="no">7</span>Makinenin üzerine görüntü yansıtma</h2>
+<p class="lead">"Görüntü yansımasını direkt makinenin üzerine yapacağız" — bu, projenin
+   en zevkli ama teknik olarak en yanlış anlaşılan kısmı. Dört seçeneği gerçek
+   maliyetleriyle koyuyorum.</p>
+
+<div class="box crit">
+  <span class="lbl">Önce kapatılması gereken yol</span>
+  <p><strong>15 inçlik şeffaf OLED paneli piyasada yok.</strong> Şeffaf OLED yalnızca iki
+     boyutta üretiliyor: 1-2 inç (kullanışsız derecede küçük) ve 30/55/77 inç
+     (dijital tabela, 2.000-18.000&nbsp;$). Aradaki boy aralığı boş.</p>
+  <p>Bu yüzden "cam panelin kendisi ekran olsun" fikrini şimdilik rafa kaldırın.
+     Aşağıdaki üç yol aynı etkiyi çok daha ucuza veriyor.</p>
+</div>
+
+<h3>Seçenek 1 — Kasa içine küçük monitör <span class="tag ok">Önerilen başlangıç</span></h3>
+<dl class="kv">
+  <dt>Maliyet</dt><dd>7-10 inç HDMI monitör: <strong>2.000-5.000 TL</strong></dd>
+  <dt>Nasıl</dt><dd>Cam yan panelin arkasına, kartların üstüne monte edilir</dd>
+  <dt>Gösterdiği</dt><dd>J.A.R.V.I.S. panelinin kendisi — Neural Core, telemetri, konuşma</dd>
+  <dt>Artı</dt><dd>Bugün çalışır, gündüz okunur, ek yazılım gerekmez</dd>
+  <dt>Eksi</dt><dd>"Hologram" değil, sadece camın arkasında bir ekran</dd>
+</dl>
+
+<h3>Seçenek 2 — Pepper's Ghost (havada duran görüntü) <span class="tag mid">Asıl hedef</span></h3>
+<p>Sahne sihirbazlığından gelen 150 yıllık teknik, "hologram vitrinlerin" hepsinde bu var:
+   parlak bir ekran, 45 derece açıyla duran yarı geçirgen bir cama yansıtılır. İzleyici
+   camın <em>arkasında</em>, havada duran bir görüntü görür.</p>
+<dl class="kv">
+  <dt>Yarı geçirgen cam/akrilik</dt><dd>1.500-4.000 TL (30×30 cm, %30-50 yansıtmalı)</dd>
+  <dt>Kaynak ekran</dt><dd>Parlak 10-13" panel veya eski tablet: 5.000-10.000 TL</dd>
+  <dt>Toplam</dt><dd><strong>7.000-14.000 TL</strong></dd>
+  <dt>Şart</dt><dd>Arkası <strong>koyu</strong> olmalı — bu yüzden kasa içi RGB'yi kısmalısınız</dd>
+  <dt>Sonuç</dt><dd>İstediğiniz "Iron Man" etkisini gerçekten veren tek makul yol</dd>
+</dl>
+<p style="font-size:9pt">Neural Core zaten dairesel ve koyu zeminli — Pepper's Ghost için
+   <strong>tasarım olarak ideal.</strong> Panelin sadece Core kısmını gösteren bir
+   "hologram modu" eklemek birkaç saatlik iş.</p>
+
+<h3>Seçenek 3 — Arkadan projeksiyon filmi <span class="tag no">Önermiyorum</span></h3>
+<dl class="kv">
+  <dt>Film</dt><dd>~1.500-3.000 TL/m²</dd>
+  <dt>Kısa mesafe projektör</dt><dd>15.000-40.000 TL</dd>
+  <dt>Neden olmaz</dt><dd>Projektör kasanın içine sığmaz; iki kart zaten tüm hacmi doldurdu.
+      Dışarıdan yansıtmak ise gölge sorunu yaratır ve ısı üretir</dd>
+</dl>
+
+<h3>Seçenek 4 — Open-cell LCD (DIY şeffaf ekran) <span class="tag mid">Deneysel</span></h3>
+<p>Bir monitörün arka ışığı sökülür, geriye şeffaf LCD katmanı kalır; kasa içi RGB
+   arkadan aydınlatır. Maliyeti düşük (bir hurda monitör + sabır) ama sonuç <strong>loş
+   ve kırılgan.</strong> Bunu ancak diğerlerini kurduktan sonra, hafta sonu projesi olarak
+   denemenizi öneririm.</p>
+
+<div class="box info">
+  <span class="lbl">Önerilen sıra</span>
+  <p><strong>Önce Seçenek 1</strong> (5.000 TL) — makine çalışsın, panel görünsün.
+     <strong>Sonra Seçenek 2</strong> (+9.000 TL) — hologram etkisi eklensin.
+     Toplam 14.000 TL ile istediğiniz görüntüye ulaşırsınız; şeffaf OLED bunun
+     <strong>20 katına</strong> mal olurdu.</p>
+</div>
+</section>
+
+<!-- ═══════════════════ 8 · İŞLETME ═══════════════════ -->
+<section>
+<h2><span class="no">8</span>Aylık işletme maliyeti</h2>
+<p>Satın alma bir kerelik; elektrik her ay. Mesken kademe 2 tarifesi
+   <strong>4,32 TL/kWh</strong> (2026 EPDK) üzerinden:</p>
+
+<table>
+  <thead><tr>
+    <th>Kullanım biçimi</th><th class="num">Yol A</th><th class="num">Yol B</th><th class="num">Yol C</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>Sadece çalışırken açık (günde 3 sa)</td><td class="num">195 TL</td><td class="num">330 TL</td><td class="num">525 TL</td></tr>
+    <tr style="background:var(--cyan-bg) !important"><td><strong>7/24 boşta + günde 2 sa tam yük</strong></td><td class="num"><strong>380 TL</strong></td><td class="num"><strong>560 TL</strong></td><td class="num"><strong>865 TL</strong></td></tr>
+    <tr><td>7/24 tam yük (sürekli eğitim)</td><td class="num">1.555 TL</td><td class="num">2.645 TL</td><td class="num">4.200 TL</td></tr>
+  </tbody>
+</table>
+
+<div class="box warn">
+  <span class="lbl">Gözden kaçan iki kalem</span>
+  <p><strong>1. Yaz aylarında klima.</strong> 850 W'lık bir makine odaya saatte
+     ~730 kcal ısı verir. Küçük bir odada yazın klimanın da çalışması gerekir;
+     bu <strong>elektrik faturasını ikiye katlar.</strong> Makineyi serin bir odaya koyun.</p>
+  <p><strong>2. Kesintisiz güç kaynağı (UPS).</strong> Model yüklenirken gelen bir
+     elektrik kesintisi dosyayı bozabilir. 1500 VA'lık line-interactive UPS
+     <strong>~12.000 TL</strong>; iki kartlı sistemde önerilir, tek kartlıda isteğe bağlı.</p>
+</div>
+
+<h3>Bulut ile karşılaştırma — dürüst hesap</h3>
+<p>Yol B'nin 132.000 TL'si ile bulutta saatlik GPU kiralasaydınız:</p>
+<ul>
+  <li>48 GB VRAM sınıfı bulut GPU ≈ 0,50-0,80 $/saat → ≈ 24-38 TL/saat</li>
+  <li>132.000 TL ÷ 31 TL ≈ <strong>4.250 saat</strong> ≈ günde 3 saat kullanımla <strong>3,9 yıl</strong></li>
+</ul>
+<p>Yani salt ekonomik olarak bulut <strong>rekabetçi.</strong> Yerel donanımın gerekçesi
+   maliyet değil, projenin kendi ilkesi: <strong>veri bu makineden çıkmıyor.</strong>
+   Müşteri makinelerinin envanteri, sizin sesiniz, teşhis kayıtları — bunları
+   kiralık bir sunucuya taşımamak bilinçli bir tercih. Bu gerekçeyi kabul ediyorsanız
+   yerel donanım doğru; etmiyorsanız 132.000 TL'yi başka yere koyun.</p>
+</section>
+
+<!-- ═══════════════════ 9 · TUZAKLAR ═══════════════════ -->
+<section>
+<h2><span class="no">9</span>Almayın — para yakan kalemler</h2>
+<table>
+  <thead><tr><th>Kalem</th><th class="num">Boşa giden</th><th>Neden</th></tr></thead>
+  <tbody>
+    <tr><td>Threadripper / TRX50 platformu</td><td class="num">~100.000 TL</td>
+        <td>Çıkarımda CPU boşta durur; 128 PCIe hattının karşılığı yok</td></tr>
+    <tr><td>96-128 GB DDR5 sistem RAM'i</td><td class="num">~95.000 TL</td>
+        <td>Model VRAM'de çalışır; 32 GB yeter. 2026'da en pahalı hata</td></tr>
+    <tr><td>Gen5 NVMe SSD</td><td class="num">~12.000 TL</td>
+        <td>Model diskten bir kez okunur; sonra disk boşta</td></tr>
+    <tr><td>RTX 3090 <strong>Ti</strong></td><td class="num">~7.000 TL</td>
+        <td>Daha pahalı <em>ve</em> NVLink yok — ikili kurulumda 3090'dan kötü</td></tr>
+    <tr><td>Özel su soğutma (custom loop)</td><td class="num">~40.000 TL</td>
+        <td>Hava soğutma + dikey montaj aynı işi görüyor; sızıntı riski gerçek</td></tr>
+    <tr><td>Şeffaf OLED panel</td><td class="num">~250.000 TL</td>
+        <td>15" boyutta üretilmiyor; Pepper's Ghost 20 kat ucuza aynı etki</td></tr>
+    <tr><td>"AI hızlandırıcı" USB çubuklar</td><td class="num">değişken</td>
+        <td>Coral/Hailo gibi cihazlar görüntü işleme içindir, LLM çalıştırmaz</td></tr>
+  </tbody>
+</table>
+<p class="tbl-note">Toplam kaçınılan: <strong>≈500.000 TL.</strong> Bu listeye uyarsanız
+   Yol B'yi Yol C bütçesinin dörtte birine kurarsınız.</p>
+</section>
+
+<!-- ═══════════════════ 10 · PLAN ═══════════════════ -->
+<section>
+<h2><span class="no">10</span>Aşamalı satın alma planı</h2>
+<p class="lead">Hepsini bir seferde almayın. Her aşama kendi başına çalışan bir sistem
+   bırakıyor; bir sonrakine geçmemeye karar verirseniz elinizde yarım bir şey kalmıyor.</p>
+
+<h3>Aşama 0 — Bu hafta · <strong>0 TL</strong></h3>
+<ul>
+  <li>Anakart modelini ve PCIe yuva bölünmesini öğrenin (<code>lspci</code> veya el kitabı)</li>
+  <li>Güç kaynağının watt'ını ve markasını okuyun</li>
+  <li>Mevcut 3080 Ti üzerinde <strong>32B model deneyin</strong> — Q3'te 12 GB'a sığar,
+      yavaş olur ama <em>kalitesini</em> görürsünüz. 70B'ye gerçekten ihtiyacınız var mı,
+      bu deneme söyler</li>
+</ul>
+
+<h3>Aşama 1 — İlk alım · <strong>≈ 62.000 TL</strong></h3>
+<ul>
+  <li>İkinci el RTX 3090 (24 GB) — yerinde test ederek</li>
+  <li>1200 W Platinum PSU (<em>şimdiden</em> ikinci kartı kaldıracak olanı alın)</li>
+  <li>2 TB Gen4 NVMe</li>
+</ul>
+<p><strong>Sonuç:</strong> 32B modeller tam hızda. J.A.R.V.I.S. bugünkünden belirgin
+   şekilde daha iyi. 70B henüz yok.</p>
+
+<h3>Aşama 2 — Cam kasa ve görünürlük · <strong>≈ 28.000 TL</strong></h3>
+<ul>
+  <li>Lian Li O11 Dynamic EVO XL + 7 fan + PWM hub</li>
+  <li>Dikey kart montaj kiti</li>
+  <li>7-10" iç monitör (Seçenek 1)</li>
+</ul>
+<p><strong>Sonuç:</strong> "Uzay sistem" görüntüsü ortaya çıkar. Makine hâlâ tek kartlı
+   ama artık <em>sergilenebilir.</em></p>
+
+<h3>Aşama 3 — 70B'ye geçiş · <strong>≈ 42.000 TL</strong></h3>
+<ul>
+  <li>İkinci RTX 3090 (<strong>birincisiyle aynı model</strong>)</li>
+  <li>NVLink köprüsü</li>
+</ul>
+<p><strong>Sonuç:</strong> 48 GB. Llama 3.3 70B Q4, 12-18 token/sn.</p>
+
+<h3>Aşama 4 — Hologram · <strong>≈ 9.000 TL</strong></h3>
+<ul>
+  <li>Yarı geçirgen cam + montaj açısı</li>
+  <li>Panele "hologram modu" eklenmesi (yazılım tarafı, ek maliyet yok)</li>
+</ul>
+
+<table style="margin-top:6mm">
+  <thead><tr><th>Aşama</th><th>Ne kazanılır</th><th class="num">Maliyet</th><th class="num">Kümülatif</th></tr></thead>
+  <tbody>
+    <tr><td>0 · Keşif</td><td>Karar için veri</td><td class="num">0</td><td class="num">0</td></tr>
+    <tr><td>1 · İlk kart</td><td>32B tam hız</td><td class="num">62.000</td><td class="num">62.000</td></tr>
+    <tr><td>2 · Cam kasa</td><td>Görünür makine</td><td class="num">28.000</td><td class="num">90.000</td></tr>
+    <tr><td>3 · İkinci kart</td><td>70B çalışır</td><td class="num">42.000</td><td class="num">132.000</td></tr>
+    <tr><td>4 · Hologram</td><td>Havada görüntü</td><td class="num">9.000</td><td class="num">141.000</td></tr>
+  </tbody>
+  <tfoot><tr><td colspan="3">Tam proje</td><td class="num">141.000 TL</td></tr></tfoot>
+</table>
+</section>
+
+<!-- ═══════════════════ 11 · KARAR ═══════════════════ -->
+<section>
+<h2><span class="no">11</span>Önerim</h2>
+
+<div class="box good">
+  <span class="lbl">Tek cümlede</span>
+  <p><strong>Aşama 0'ı bu hafta yapın, Aşama 1'i alın, Aşama 3'e geçmeden önce
+     32B'nin size yetip yetmediğine bakın.</strong></p>
+</div>
+
+<p>Gerekçesi şu: bu projede şimdiye kadar her adımı <em>çalıştığını görerek</em> ilerlettik —
+   önce mock sağlayıcı, sonra Ollama, sonra ses, sonra mikrofon. Donanımda da aynısını
+   yapmak için hiçbir neden yok değil. 70B, 32B'den <strong>ölçülebilir şekilde</strong>
+   daha iyi olmalı ki 70.000 TL fazlayı hak etsin; bunu ancak ikisini de kendi
+   sorularınızla deneyerek anlarsınız.</p>
+
+<p>Aşama 1'de <strong>1200 W PSU almanızı</strong> özellikle vurguluyorum. Tek kart için
+   fazladır, ama Aşama 3'e geçtiğinizde PSU'yu ikinci kez almak zorunda kalmazsınız.
+   5.000 TL'lik öngörü, 14.000 TL'lik tekrarı önler.</p>
+
+<h3>Neyi bilmiyorum — dürüstlük payı</h3>
+<ul>
+  <li><strong>İkinci el 3090 fiyatı oynak.</strong> 38.000 TL'yi ilan ortalaması olarak aldım;
+      14.000 TL'lik ilanlar da var ama madencilik kartı riski yüksek. Gerçek fiyatı
+      ancak birkaç ilana bakıp yerinde test ederek öğreneceğiz.</li>
+  <li><strong>Bellek krizinin sonu belirsiz.</strong> DDR5 ve GDDR7 fiyatları düşerse
+      Yol C bir yıl içinde bugünkü Yol B fiyatına inebilir. Kimse tarih veremiyor.</li>
+  <li><strong>Anakartınızın x8/x8 desteği bilinmiyor.</strong> Yoksa Yol B'ye 17.500 TL
+      eklenir ve işlemci de değişmek zorunda kalabilir (AM4 → AM5), bu da +25.000 TL.</li>
+  <li><strong>70B'nin Türkçe kalitesi.</strong> Llama 3.3 70B'nin Türkçesi Qwen2.5 72B'den
+      zayıf. Hangi 70B'yi seçeceğimiz ayrı bir test konusu ve donanım kararını değiştirmez,
+      ama beklentiyi etkiler.</li>
+</ul>
+
+<div class="box info">
+  <span class="lbl">Sıradaki adım</span>
+  <p>Bana iki bilgi gönderin — <strong>anakart modeli</strong> ve <strong>güç kaynağı watt'ı</strong> —
+     bu raporu kesinleşmiş rakamlarla güncelleyeyim. İkisi de kasanın kapağını açıp
+     bakmakla öğrenilir; ya da WSL'de:</p>
+  <p style="font-family:var(--mono);font-size:8.6pt;background:#fff;padding:2mm;border:1px solid var(--line)">
+     sudo dmidecode -t baseboard | grep -E "Manufacturer|Product"</p>
+</div>
+</section>
+
+<!-- ═══════════════════ EK · KAYNAKLAR ═══════════════════ -->
+<section>
+<h2>Ek · Fiyat kaynakları</h2>
+<p style="font-size:9pt">Aşağıdaki rakamlar 23 Ağustos 2026'da yapılan araştırmadan alındı.
+   İlan fiyatlarıdır, teklif değildir.</p>
+<table>
+  <thead><tr><th>Kalem</th><th class="num">Fiyat</th><th>Kaynak</th></tr></thead>
+  <tbody>
+    <tr><td>RTX 5090 32 GB (MSI Gaming Trio)</td><td class="num">187.294 TL</td><td>Cimri, Haz 2026</td></tr>
+    <tr><td>RTX 5090 32 GB (MSI Vanguard SOC)</td><td class="num">268.850 TL</td><td>Cimri, Tem 2026</td></tr>
+    <tr><td>RTX 5090 32 GB (ASUS TUF OC)</td><td class="num">297.559 TL</td><td>Cimri, 2026</td></tr>
+    <tr><td>RTX PRO 6000 Blackwell 96 GB</td><td class="num">16.000 $</td><td>NVIDIA Marketplace, Ağu 2026</td></tr>
+    <tr><td>RTX 3090 24 GB (ikinci el, ABD)</td><td class="num">820 $</td><td>bestvaluegpu, Mar 2026</td></tr>
+    <tr><td>DDR5 96 GB (XPG Lancer 6400)</td><td class="num">103.099 TL</td><td>Sinerji Bilgisayar</td></tr>
+    <tr><td>Ryzen 9 9950X</td><td class="num">25.447 TL</td><td>Akakçe, 21 Ağu 2026</td></tr>
+    <tr><td>MSI MAG X870E Tomahawk WiFi</td><td class="num">17.429 TL</td><td>Akakçe, 2026</td></tr>
+    <tr><td>Gigabyte X870 Gaming X WiFi7</td><td class="num">14.161 TL</td><td>Akakçe, 2026</td></tr>
+    <tr><td>ASUS Pro WS TRX50-SAGE</td><td class="num">50.196 TL</td><td>Nova Bilgisayar</td></tr>
+    <tr><td>Threadripper 7960X</td><td class="num">69.644 TL</td><td>Akakçe, 2026</td></tr>
+    <tr><td>Lian Li O11 Dynamic EVO XL</td><td class="num">14.999 TL</td><td>Akakçe / n11, 2026</td></tr>
+    <tr><td>Hyte Y70</td><td class="num">17.139 TL</td><td>Türkiye perakende, 2026</td></tr>
+    <tr><td>1 TB Gen4 NVMe (MSI Spatium M461)</td><td class="num">8.999 TL</td><td>incehesap, 2026</td></tr>
+    <tr><td>80+ Platinum PSU (giriş)</td><td class="num">7.289 TL</td><td>Sinerji Bilgisayar</td></tr>
+    <tr><td>Elektrik, mesken kademe 2</td><td class="num">4,32 TL/kWh</td><td>EPDK, Nis 2026</td></tr>
+    <tr><td>USD/TRY</td><td class="num">48,02</td><td>22 Ağu 2026</td></tr>
+  </tbody>
+</table>
+
+<h3>Teknik kaynaklar</h3>
+<ul style="font-size:9pt">
+  <li>70B Q4_K_M VRAM ölçümü (43-45 GB) — çoklu kıyaslama derlemesi, 2026</li>
+  <li>RTX 3090 NVLink 48 GB birleşik bellek — çok kartlı yerel LLM kurulum kılavuzu, 2026</li>
+  <li>Llama 3 70B tek 3090'da 5,2 tok/sn (Q4_K_M) — GigaGPU kıyaslaması</li>
+  <li>Ryzen AI Max+ 395 yoğun 70B: 5-15 tok/sn; bellek bant genişliği 210-220 GB/sn</li>
+  <li>DDR5 fiyat endeksi %486 (Ağu 2026) — Notebookcheck</li>
+  <li>Şeffaf OLED yalnızca 30/55/77 inç — OLED-Info / ceoled pazar özeti</li>
+</ul>
+
+<div class="box warn" style="margin-top:6mm">
+  <span class="lbl">Uyarı</span>
+  <p>Bellek ve ekran kartı fiyatları 2026'da <strong>haftalık</strong> oynuyor.
+     Satın alma gününde fiyatları yeniden doğrulayın; bu tablolar karar vermek için
+     yeterli, sipariş vermek için değil.</p>
+</div>
+</section>
+
+</body>
+</html>

@@ -199,7 +199,8 @@ class PanelServer:
                  custom_commands: CustomCommandStore | None = None,
                  sesli_onay_tabani: RiskLevel = RiskLevel.MEDIUM,
                  rag_auto_paths=(), rag_sync_interval: float = 60.0,
-                 llm_uyari: str = "", reminder_interval: float = 30.0) -> None:
+                 llm_uyari: str = "", reminder_interval: float = 30.0,
+                 acceptance_report=None) -> None:
         self.agent = agent
         self.host = host
         self.port = port
@@ -229,6 +230,7 @@ class PanelServer:
         self.agenda = getattr(agent, "agenda", None)
         self.reminders = ReminderService(self.agenda, agent.cases) if self.agenda else None
         self.reminder_interval = max(1.0, float(reminder_interval))
+        self.acceptance_report = acceptance_report
         self.hub = EventHub()
         self._agent_lock = threading.Lock()
         self._speech: dict[str, str] = {}
@@ -579,6 +581,20 @@ class PanelServer:
                     "ozet": f"{len(rows)} açık · {overdue} geciken" if rows else "henüz kayıt yok",
                     "satirlar": rows}
 
+        def kabul() -> dict[str, Any]:
+            if self.acceptance_report is None:
+                return {"durum": "yok", "ozet": "kabul testi çalıştırılmadı", "satirlar": []}
+            report = self.acceptance_report.as_dict()
+            counts = report["counts"]
+            return {
+                "durum": report["status"],
+                "ozet": f"{counts['hazir']} hazır · {counts['eksik']} eksik · {counts['arizali']} arızalı",
+                "satirlar": [{"ad": x["name"], "deger": x["status"],
+                               "aciklama": x["detail"] +
+                               (f" · Çözüm: {x['fix']}" if x["fix"] and x["status"] != "hazir" else "")}
+                              for x in report["checks"]],
+            }
+
         return {
             "sistem": guvenli(sistem, {"durum": "yok", "ozet": "", "satirlar": []}),
             "ses": guvenli(ses, {"durum": "yok", "ozet": "", "satirlar": []}),
@@ -591,6 +607,7 @@ class PanelServer:
             "kayitlar": guvenli(kayitlar, {"durum": "yok", "ozet": "log okunamadı", "satirlar": []}),
             "saglik": guvenli(saglik, {"durum": "yok", "ozet": "sağlık ölçülemedi", "satirlar": []}),
             "ajanda": guvenli(ajanda, {"durum": "yok", "ozet": "ajanda okunamadı", "satirlar": []}),
+            "kabul": guvenli(kabul, {"durum": "yok", "ozet": "kabul raporu okunamadı", "satirlar": []}),
         }
 
     # ---------------- agent plumbing ----------------

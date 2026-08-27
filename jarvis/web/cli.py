@@ -129,6 +129,15 @@ def main(argv: list[str] | None = None) -> int:
         enabled=cfg.face_recognition_enabled,
         path=cfg.data_dir / "face_templates.json",
     )
+    _llm_eksik = ""
+    if cfg.llm_provider == "ollama":
+        from ..llm.ollama_provider import ollama_hazir
+        _llm_eksik = ollama_hazir(cfg.ollama_host, cfg.ollama_model)
+    from ..acceptance.engine import run_acceptance
+    acceptance_report = run_acceptance(
+        cfg, tts=tts, stt=stt, vision=vision,
+        ollama_probe=lambda *_: _llm_eksik,
+    )
     # The panel can run terminal commands, so anything beyond this machine
     # needs a token. Generated automatically rather than left to be forgotten.
     yerel = args.host in ("127.0.0.1", "localhost")
@@ -145,11 +154,6 @@ def main(argv: list[str] | None = None) -> int:
     # hem de panele gidiyor. Bu proje ayni dersi uc kez aldi (kamera, Piper,
     # Edge): kurulu olmayan bir seyin "hazir" gorunmesi, hatanin konusmanin
     # ORTASINDA cikmasi demek.
-    _llm_eksik = ""
-    if cfg.llm_provider == "ollama":
-        from ..llm.ollama_provider import ollama_hazir
-        _llm_eksik = ollama_hazir(cfg.ollama_host, cfg.ollama_model)
-
     server = PanelServer(agent, host=args.host, port=args.port, tts=tts,
                          token=token, stt=stt, vision=vision,
                          object_vision=object_vision, ocr=ocr,
@@ -158,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
                          rag_auto_paths=cfg.rag_auto_paths,
                          rag_sync_interval=cfg.rag_sync_interval,
                          reminder_interval=cfg.reminder_interval,
+                         acceptance_report=acceptance_report,
                          llm_uyari=_llm_eksik)
 
     url = f"http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{args.port}"

@@ -49,7 +49,8 @@ def main() -> int:
             test_env["JARVIS_DATA_DIR"] = data
             run("Çekirdek regresyon testleri", [sys.executable, "-m", "pytest", "-q",
                 "--ignore=tests/test_web.py"], test_env)
-    print("KABUL TAMAM — mikrofon, kamera, Ollama/GPU ve ses gerçek sistemde ayrıca sınanmalı.")
+    print("ÇEKİRDEK KABUL TAMAM")
+    print("Gerçek sistem raporu için: jarvis-kabul")
     return 0
 
 

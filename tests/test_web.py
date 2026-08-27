@@ -588,14 +588,14 @@ def test_the_floor_setting_can_never_loosen_the_gate(ayar):
 
 MODUL_ADLARI = {"sistem", "ses", "goruntu", "teshis",
                 "hafiza", "bilgi", "araclar", "komutlar", "saglik",
-                "kayitlar", "ajanda"}
+                "kayitlar", "ajanda", "kabul"}
 
 
 def test_every_module_tab_has_data(server):
     veri = server.modul_verisi()
     assert set(veri) == MODUL_ADLARI
     for ad, d in veri.items():
-        assert d["durum"] in ("hazir", "bos", "yok"), ad
+        assert d["durum"] in ("hazir", "bos", "yok", "eksik", "arizali"), ad
         assert isinstance(d["satirlar"], list), ad
 
 
@@ -626,6 +626,18 @@ def test_agenda_module_is_empty_instead_of_inventing_data(server):
     assert ajanda["durum"] == "bos"
     assert ajanda["satirlar"] == []
     assert "henüz" in ajanda["ozet"]
+
+
+def test_acceptance_module_exposes_real_report_rows(server):
+    from jarvis.acceptance.engine import AcceptanceCheck, AcceptanceReport
+    report = AcceptanceReport((
+        AcceptanceCheck("python", "Python", "hazir", "3.12", required=True),
+        AcceptanceCheck("camera", "Kamera", "eksik", "Ayar kapalı.", "Kamerayı açın."),
+    ))
+    data = PanelServer(server.agent, acceptance_report=report).modul_verisi()["kabul"]
+    assert data["durum"] == "eksik"
+    assert len(data["satirlar"]) == 2
+    assert "Çözüm: Kamerayı açın." in data["satirlar"][1]["aciklama"]
 
 
 def test_an_empty_knowledge_tab_says_how_to_fill_it(server):

@@ -118,7 +118,7 @@ ollama pull bge-m3
 
 ### Kurulum adımları
 
-1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.4/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
+1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.5/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
 2. Dosyaya çift tıklayıp kurulum sihirbazını tamamlayın.
 3. Kaynak kurulum seçeneği için `INDIRME.md` belgesine bakın.
 4. Kurucu projeyi `%LOCALAPPDATA%\Programs\JARVIS` altına kurar.
@@ -272,7 +272,8 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - ✅ Hibrit RAG ve yerel embedding
 - ✅ ElevenLabs, Edge, Piper ve faster-whisper entegrasyonları
 - ✅ Yerel kamera, yüz, nesne ve OCR altyapısı
-- 🔸 Temiz Windows donanım kabul testleri
+- ✅ Windows kabul raporu ve panel sağlık görünümü
+- 🔸 Gerçek kamera/mikrofonla fiziksel kabul turu
 - ✅ Vaka bağlantılı teşhis playbook'ları ve karar ağacı
 - ✅ RAG panel yönetimi ve otomatik yeniden indeksleme
 - ✅ Yedekleme, geri yükleme, log rotation ve Windows watchdog
@@ -309,6 +310,7 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - [Yedekleme ve watchdog](docs/YEDEKLEME-VE-WATCHDOG.md)
 - [Diagnostic Brain](docs/TESHIS.md)
 - [Ajanda ve yerel bildirimler](docs/AJANDA.md)
+- [Windows kabul testi](docs/WINDOWS-KABUL-TESTI.md)
 
 ## Kurulum yolları
 

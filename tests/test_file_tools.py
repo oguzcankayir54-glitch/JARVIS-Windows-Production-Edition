@@ -1,4 +1,7 @@
 """File tools: normal use, secret protection, and system-path escalation."""
+import os
+from pathlib import Path
+
 import pytest
 
 from jarvis.security.audit import AuditLog
@@ -86,6 +89,8 @@ def test_system_path_write_requires_approval():
         seen["risk"] = risk
         return False
 
-    res = _mgr(approver).dispatch("write_file", {"path": "/etc/jarvis-test.conf", "content": "x"})
+    root = Path(os.environ.get("SystemRoot", "C:/Windows")) if os.name == "nt" else Path("/etc")
+    target = root / "jarvis-test.conf"
+    res = _mgr(approver).dispatch("write_file", {"path": str(target), "content": "x"})
     assert not res.ok
     assert seen["risk"] is RiskLevel.HIGH

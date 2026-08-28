@@ -6,6 +6,7 @@ not a stand-in for a real model's quality — it is a stand-in for its
 rankings that disagree, arriving in a defined order, fused into one.
 """
 import math
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -48,7 +49,10 @@ class _TorbaEmbedder:
         for metin in texts:
             vec = [0.0] * self.dim
             for kelime in kelimeler(metin):
-                vec[hash(kelime) % self.dim] += 1.0
+                # Python hash'i her süreçte farklı tuzlanır; test sıralaması
+                # işletim sistemi veya PYTHONHASHSEED'e bağlı olmamalı.
+                bucket = int.from_bytes(hashlib.sha256(kelime.encode("utf-8")).digest()[:8], "big")
+                vec[bucket % self.dim] += 1.0
             cikti.append(normalize(vec))
         return cikti
 

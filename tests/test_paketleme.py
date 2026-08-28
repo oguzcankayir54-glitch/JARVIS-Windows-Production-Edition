@@ -133,7 +133,7 @@ def test_release_download_links_use_one_current_tag():
     for belge in belgeler:
         tags.update(re.findall(r"releases/download/(v[^/]+)/JARVIS-Setup-",
                                belge.read_text(encoding="utf-8")))
-    assert tags == {"v2.0.1-production.8"}
+    assert tags == {"v2.0.1-production.9"}
 
 
 def test_release_workflow_runs_acceptance_before_building_installer():

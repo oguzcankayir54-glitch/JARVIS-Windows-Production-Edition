@@ -37,7 +37,7 @@ Ya da <https://www.python.org/downloads/windows/> — kurulum sırasında
 
 ## Kurulum
 
-[GitHub Releases üzerinden `JARVIS-Setup-2.0.1.exe`](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.8/JARVIS-Setup-2.0.1.exe)
+[GitHub Releases üzerinden `JARVIS-Setup-2.0.1.exe`](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.9/JARVIS-Setup-2.0.1.exe)
 dosyasını indirin ve çift tıklayın. Standart Windows kurulum sihirbazı mevcut
 kurulum denetimlerini çalıştırır, watchdog'u kullanıcı başlangıcına ekler ve
 kaldırıcıyı kaydeder.

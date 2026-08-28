@@ -12,6 +12,7 @@ where a bad write can break the machine.
 from __future__ import annotations
 
 import fnmatch
+import os
 from pathlib import Path
 from typing import Any
 
@@ -26,8 +27,8 @@ _SECRET_PATTERNS = (
 )
 
 #: Writing here can break the system, so it needs explicit approval.
-_SYSTEM_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/lib", "/lib64",
-                    "/sys", "/proc", "/dev", "/var/lib", "/opt")
+_UNIX_SYSTEM_ROOTS = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/lib", "/lib64",
+                      "/sys", "/proc", "/dev", "/var/lib", "/opt")
 
 _MAX_READ_BYTES = 200_000
 
@@ -44,11 +45,11 @@ def is_secret_path(p: Path) -> bool:
     search index either, and two blocklists would drift apart.
     """
     name = p.name.lower()
-    full = str(p).lower()
     if any(fnmatch.fnmatch(name, pat) for pat in _SECRET_PATTERNS):
         return True
     # .ssh/ and .gnupg/ contents are sensitive regardless of file name.
-    return "/.ssh/" in full or "/.gnupg/" in full or "/.aws/" in full
+    sensitive_dirs = {".ssh", ".gnupg", ".aws"}
+    return any(part.lower() in sensitive_dirs for part in p.parts)
 
 
 #: Eski ad; modül içinde kullanılıyor.
@@ -56,7 +57,18 @@ _is_secret = is_secret_path
 
 
 def _is_system_path(p: Path) -> bool:
-    return str(p).startswith(_SYSTEM_PREFIXES)
+    if os.name == "nt":
+        raw_roots = (os.environ.get("SystemRoot"), os.environ.get("ProgramFiles"),
+                     os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramData"))
+    else:
+        raw_roots = _UNIX_SYSTEM_ROOTS
+    for raw in raw_roots:
+        if not raw:
+            continue
+        root = Path(raw).expanduser().resolve()
+        if p == root or root in p.parents:
+            return True
+    return False
 
 
 def _guard(p: Path) -> None:

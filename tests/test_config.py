@@ -158,7 +158,7 @@ def test_rag_auto_paths_are_expanded_and_empty_items_ignored(clean_env, monkeypa
     monkeypatch.setenv("JARVIS_RAG_SYNC_INTERVAL", "2")
     cfg = load_config()
     assert [str(p) for p in cfg.rag_auto_paths] == [
-        str(Path("~/notlar").expanduser()), "/srv/belgeler"]
+        str(Path("~/notlar").expanduser()), str(Path("/srv/belgeler"))]
     assert cfg.rag_sync_interval == 10.0, "çok sık tarama sınırlandırılmalı"
 
 

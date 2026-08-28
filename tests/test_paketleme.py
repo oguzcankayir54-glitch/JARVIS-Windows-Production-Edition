@@ -15,6 +15,7 @@ Buradaki testler ağa çıkmıyor ve paket kurmuyor: yapılandırmanın kurulumu
 belirsizliğe bırakmadığını denetliyorlar.
 """
 import tomllib
+import re
 from pathlib import Path
 
 import pytest
@@ -120,6 +121,24 @@ def test_the_guide_gives_the_button_path_not_a_dead_link():
     assert "JARVIS-Setup-2.0.1.exe" in metin
     assert "feat/complete-project-sync" in metin
     assert "oguzcankayir54-glitch/jarvis" not in metin
+
+
+def test_release_download_links_use_one_current_tag():
+    """Aynı ürün için iki farklı kurucu önermek eski hatayı geri getirir."""
+    belgeler = (KOK / "README.md", KOK / "INDIRME.md",
+                KOK / "docs" / "KURULUM-WINDOWS.md")
+    tags = set()
+    for belge in belgeler:
+        tags.update(re.findall(r"releases/download/(v[^/]+)/JARVIS-Setup-",
+                               belge.read_text(encoding="utf-8")))
+    assert tags == {"v2.0.1-production.6"}
+
+
+def test_release_workflow_runs_acceptance_before_building_installer():
+    workflow = (KOK / ".github" / "workflows" /
+                "windows-installer-release.yml").read_text(encoding="utf-8")
+    assert "python scripts/windows_acceptance.py" in workflow
+    assert "needs: test" in workflow
 
 
 def test_no_document_offers_a_link_that_does_not_work():

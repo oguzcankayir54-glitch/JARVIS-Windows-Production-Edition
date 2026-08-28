@@ -47,8 +47,10 @@ def main() -> int:
             # özel kapatma bayraklarını onlara sızdırma.
             test_env = base_env.copy()
             test_env["JARVIS_DATA_DIR"] = data
-            run("Çekirdek regresyon testleri", [sys.executable, "-m", "pytest", "-q",
-                "--ignore=tests/test_web.py"], test_env)
+            # Panel rotaları da ürünün parçası: yerel HTTP soketi açabilen gerçek
+            # Windows kabul ortamında bunları atlamak bozuk bir kurucuyu geçirirdi.
+            run("Tam regresyon testleri", [sys.executable, "-m", "pytest", "-q"],
+                test_env)
     print("ÇEKİRDEK KABUL TAMAM")
     print("Gerçek sistem raporu için: jarvis-kabul")
     return 0

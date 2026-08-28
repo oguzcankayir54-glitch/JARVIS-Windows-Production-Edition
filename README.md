@@ -118,7 +118,7 @@ ollama pull bge-m3
 
 ### Kurulum adımları
 
-1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.5/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
+1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.6/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
 2. Dosyaya çift tıklayıp kurulum sihirbazını tamamlayın.
 3. Kaynak kurulum seçeneği için `INDIRME.md` belgesine bakın.
 4. Kurucu projeyi `%LOCALAPPDATA%\Programs\JARVIS` altına kurar.

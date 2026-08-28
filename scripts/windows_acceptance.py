@@ -12,6 +12,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def configure_utf8_console() -> None:
+    """Windows'un cp1252 CI konsolunda Türkçe durum satırları çökmesin."""
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def run(label: str, command: list[str], env: dict[str, str]) -> None:
     print(f"[TEST] {label}")
     result = subprocess.run(command, cwd=ROOT, env=env, text=True)
@@ -21,6 +28,7 @@ def run(label: str, command: list[str], env: dict[str, str]) -> None:
 
 
 def main() -> int:
+    configure_utf8_console()
     base_env = os.environ.copy()
     with tempfile.TemporaryDirectory(prefix="jarvis-windows-acceptance-") as data:
         env = base_env.copy()

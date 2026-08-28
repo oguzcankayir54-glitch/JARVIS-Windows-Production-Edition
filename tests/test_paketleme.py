@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.windows_acceptance import configure_utf8_console
+
 KOK = Path(__file__).resolve().parents[1]
 
 
@@ -131,7 +133,7 @@ def test_release_download_links_use_one_current_tag():
     for belge in belgeler:
         tags.update(re.findall(r"releases/download/(v[^/]+)/JARVIS-Setup-",
                                belge.read_text(encoding="utf-8")))
-    assert tags == {"v2.0.1-production.6"}
+    assert tags == {"v2.0.1-production.7"}
 
 
 def test_release_workflow_runs_acceptance_before_building_installer():
@@ -139,6 +141,19 @@ def test_release_workflow_runs_acceptance_before_building_installer():
                 "windows-installer-release.yml").read_text(encoding="utf-8")
     assert "python scripts/windows_acceptance.py" in workflow
     assert "needs: test" in workflow
+
+
+def test_windows_acceptance_forces_utf8_console(monkeypatch):
+    class Console:
+        configured = None
+
+        def reconfigure(self, **kwargs):
+            self.configured = kwargs
+
+    console = Console()
+    monkeypatch.setattr("scripts.windows_acceptance.sys.stdout", console)
+    configure_utf8_console()
+    assert console.configured == {"encoding": "utf-8", "errors": "backslashreplace"}
 
 
 def test_no_document_offers_a_link_that_does_not_work():

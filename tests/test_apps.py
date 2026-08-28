@@ -8,6 +8,7 @@ import json
 
 import pytest
 
+from jarvis.llm.base import Message
 from jarvis.apps.katalog import (
     URI,
     VARSAYILAN,
@@ -241,3 +242,49 @@ def test_the_tools_are_registered_by_bootstrap():
                        memory=MemoryStore(":memory:"))
     adlar = {t.name for t in ajan.registry.all()}
     assert {"uygulama_ac", "uygulama_listesi"} <= adlar
+
+
+@pytest.mark.parametrize("izin", [
+    "Önerilerde bulunabilirsin",
+    "Önerilerde bulanabilirsin",
+    "Uygulama tavsiyesi verebilirsin",
+])
+def test_app_suggestion_permission_keeps_the_previous_subject(izin, monkeypatch):
+    from jarvis.bootstrap import build_agent
+    from jarvis.config import Config
+    from jarvis.memory.store import MemoryStore
+
+    ajan = build_agent(Config(llm_provider="mock", non_interactive=True),
+                       memory=MemoryStore(":memory:"))
+    ajan.history.extend((
+        Message(role="user", content="Hangi uygulamaları açabiliyorsun?"),
+        Message(role="tool", name="uygulama_listesi",
+                content='{"uygulamalar":[{"ad":"YouTube"}]}'),
+        Message(role="assistant", content="Açabildiğim uygulama listesini gösterdim."),
+    ))
+    monkeypatch.setattr(
+        ajan.llm, "chat",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("bağlamsal onay LLM'e gitmemeli")),
+    )
+
+    cevap = ajan.ask(izin)
+    assert "uygulama" in cevap.lower()
+    assert "önereceğim" in cevap.lower()
+    assert "ne arıyorsunuz" not in cevap.lower()
+
+
+def test_generic_suggestion_permission_is_not_hijacked_by_old_app_context():
+    from jarvis.bootstrap import build_agent
+    from jarvis.config import Config
+    from jarvis.memory.store import MemoryStore
+
+    ajan = build_agent(Config(llm_provider="mock", non_interactive=True),
+                       memory=MemoryStore(":memory:"))
+    ajan.history.extend((
+        Message(role="user", content="Hangi uygulamaları açabiliyorsun?"),
+        Message(role="assistant", content="Açabildiğim uygulama listesini gösterdim."),
+        Message(role="user", content="Bugünkü donanım planını konuşalım."),
+        Message(role="assistant", content="Donanım planını değerlendirebiliriz."),
+    ))
+    assert ajan._app_suggestion_acknowledgement("Önerilerde bulunabilirsin") is None

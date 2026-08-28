@@ -160,6 +160,43 @@ class Agent:
         role = katla(self.owner.role or "")
         return any(k in role for k in ("gelistir", "tasarimci", "sahibi"))
 
+    def _app_suggestion_acknowledgement(self, user_text: str) -> str | None:
+        """Understand a short suggestion permission in the preceding app context.
+
+        ``Önerilerde bulunabilirsin`` is ambiguous in isolation, but not after
+        J.A.R.V.I.S. has just listed the applications it can open. Sending that
+        one-line acknowledgement back through the LLM made smaller local models
+        forget the preceding subject and ask what kind of advice was wanted.
+        """
+        text = katla(user_text)
+        suggestion = any(word in text for word in ("oneri", "tavsiye"))
+        permission = any(word in text for word in (
+            "bulunabilirsin", "bulanabilirsin", "yapabilirsin",
+            "verebilirsin", "sunabilirsin",
+        ))
+        if not (suggestion and permission):
+            return None
+
+        # Only inspect the preceding turn. An old application conversation must
+        # not hijack a later request for recommendations on another subject.
+        previous_turn: list[Message] = []
+        for message in reversed(self.history):
+            previous_turn.append(message)
+            if message.role == "user":
+                break
+        app_context = any(
+            (message.role == "tool" and message.name == "uygulama_listesi")
+            or (message.role == "assistant"
+                and "uygulama" in katla(message.content)
+                and any(term in katla(message.content)
+                        for term in ("acabil", "listesi", "windows uygulamalari")))
+            for message in previous_turn
+        )
+        if not app_context:
+            return None
+        return ("Elbette efendim. Listede olmayan bir uygulama söylerseniz, "
+                "mevcut kataloğa göre en yakın güvenli seçenekleri önereceğim.")
+
     def _direct_reply(self, text: str, user_text: str, *,
                       trace: RequestTrace | None = None,
                       trace_started: float | None = None) -> str:
@@ -396,6 +433,13 @@ class Agent:
         if self.last_intent.reasoning_level == 0:
             return self._direct_reply(
                 "Efendim?", user_text,
+                trace=turn_trace, trace_started=trace_started,
+            )
+
+        app_ack = self._app_suggestion_acknowledgement(user_text)
+        if app_ack is not None:
+            return self._direct_reply(
+                app_ack, user_text,
                 trace=turn_trace, trace_started=trace_started,
             )
 

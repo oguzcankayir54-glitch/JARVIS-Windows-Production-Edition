@@ -213,7 +213,7 @@ pytest -q
 
 Mevcut doğrulama tabanı:
 
-- 1021 otomatik test
+- 1094 otomatik test
 - Python kaynak derleme kontrolü
 - Windows kurulum ve başlatıcı regresyon testleri
 - Paket/ZIP içinde sır bulunmadığını doğrulayan testler

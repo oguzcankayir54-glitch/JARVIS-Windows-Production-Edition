@@ -19,6 +19,14 @@ def configure_utf8_console() -> None:
         reconfigure(encoding="utf-8", errors="backslashreplace")
 
 
+def utf8_environment() -> dict[str, str]:
+    """Alt Python süreçlerine de UTF-8 taşı; stdout ayarı miras alınmaz."""
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
 def run(label: str, command: list[str], env: dict[str, str]) -> None:
     print(f"[TEST] {label}")
     result = subprocess.run(command, cwd=ROOT, env=env, text=True)
@@ -29,7 +37,7 @@ def run(label: str, command: list[str], env: dict[str, str]) -> None:
 
 def main() -> int:
     configure_utf8_console()
-    base_env = os.environ.copy()
+    base_env = utf8_environment()
     with tempfile.TemporaryDirectory(prefix="jarvis-windows-acceptance-") as data:
         env = base_env.copy()
         env.update({

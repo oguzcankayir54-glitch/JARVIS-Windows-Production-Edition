@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.windows_acceptance import configure_utf8_console
+from scripts.windows_acceptance import configure_utf8_console, utf8_environment
 
 KOK = Path(__file__).resolve().parents[1]
 
@@ -133,7 +133,7 @@ def test_release_download_links_use_one_current_tag():
     for belge in belgeler:
         tags.update(re.findall(r"releases/download/(v[^/]+)/JARVIS-Setup-",
                                belge.read_text(encoding="utf-8")))
-    assert tags == {"v2.0.1-production.7"}
+    assert tags == {"v2.0.1-production.8"}
 
 
 def test_release_workflow_runs_acceptance_before_building_installer():
@@ -154,6 +154,12 @@ def test_windows_acceptance_forces_utf8_console(monkeypatch):
     monkeypatch.setattr("scripts.windows_acceptance.sys.stdout", console)
     configure_utf8_console()
     assert console.configured == {"encoding": "utf-8", "errors": "backslashreplace"}
+
+
+def test_windows_acceptance_propagates_utf8_to_subprocesses():
+    env = utf8_environment()
+    assert env["PYTHONIOENCODING"] == "utf-8"
+    assert env["PYTHONUTF8"] == "1"
 
 
 def test_no_document_offers_a_link_that_does_not_work():

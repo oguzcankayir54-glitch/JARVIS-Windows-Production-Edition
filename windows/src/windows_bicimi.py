@@ -79,6 +79,9 @@ def denetle() -> int:
 
 
 def main() -> int:
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="backslashreplace")
     if "--denetle" in sys.argv:
         return 1 if denetle() else 0
     for yol, bom_ister in DOSYALAR:

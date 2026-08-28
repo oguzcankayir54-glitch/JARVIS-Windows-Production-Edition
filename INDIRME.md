@@ -4,7 +4,7 @@
 
 Hazır kurulum paketini indirin:
 
-**[JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.7/JARVIS-Setup-2.0.1.exe)**
+**[JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.8/JARVIS-Setup-2.0.1.exe)**
 
 Dosyaya çift tıklayın ve kurulum sihirbazını tamamlayın. Paket henüz kod
 imzalı olmadığı için SmartScreen görünürse **Daha fazla bilgi → Yine de

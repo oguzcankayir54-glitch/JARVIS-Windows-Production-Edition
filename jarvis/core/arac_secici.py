@@ -47,7 +47,7 @@ ANAHTARLAR: dict[str, tuple[str, ...]] = {
               "belge", "yol"),
     "terminal": ("komut", "calistir", "terminal", "konsol", "kabuk"),
     "vaka": ("vaka", "musteri", "servis", "ariza", "onarim", "tamir", "is emri",
-             "kayit", "kaydi", "gecmis"),
+             "kayit", "kaydi", "gecmis", "teshis", "playbook", "belirti", "kontrol"),
     "bilgi": ("bilgi taban", "rag", "belge", "dokuman", "proje", "kod", "ara",
               "nerede", "nasil yap", "hangi dosya"),
     "web": ("internet", "web", "site", "guncel", "fiyat", "haber", "arastir",
@@ -58,6 +58,7 @@ ANAHTARLAR: dict[str, tuple[str, ...]] = {
     "git": ("git", "github", "commit", "branch", "dal", "remote", "diff"),
     "uygulama": ("ac", "baslat", "calistir", "youtube", "tarayici", "program",
                  "uygulama", "ayarlar", "not defteri", "hesap makinesi"),
+    "ajanda": ("ajanda", "gorev", "randevu", "teslim", "hatirlat", "yapilacak"),
 }
 
 #: Araç adı → kategori. Kayıt defterindeki adlarla birebir.
@@ -88,6 +89,9 @@ KATEGORILER: dict[str, str] = {
     "vaka_ara": "vaka",
     "acik_vakalar": "vaka",
     "vaka_detay": "vaka",
+    "teshis_playbooklari": "vaka",
+    "teshis_baslat": "vaka",
+    "teshis_yanitla": "vaka",
     "bilgi_ara": "bilgi",
     "bilgi_durum": "bilgi",
     "web_ara": "web",
@@ -100,6 +104,9 @@ KATEGORILER: dict[str, str] = {
     "arama_ac": "uygulama",
     "uygulama_ac": "uygulama",
     "uygulama_listesi": "uygulama",
+    "ajanda_ekle": "ajanda",
+    "ajanda_listele": "ajanda",
+    "ajanda_durum": "ajanda",
 }
 
 #: Hiçbir kategori tutmadığında gönderilenler.

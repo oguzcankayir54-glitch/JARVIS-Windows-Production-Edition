@@ -14,6 +14,7 @@ exactly where an extra dependency is least welcome.
     POST /gor       raw image body → faces found (local, frame not kept)
     GET  /moduller  per-module detail for the module bar
     GET  /health    liveness probe
+    GET  /manifest.webmanifest  installable mobile-app metadata (no secrets)
 
 **Binds to 127.0.0.1 by default and should stay there.** This endpoint can
 run terminal commands through the agent, so exposing it on a LAN address
@@ -24,6 +25,7 @@ from __future__ import annotations
 import hmac
 import json
 import queue
+import sys
 import threading
 import time
 import urllib.parse
@@ -36,9 +38,13 @@ import psutil
 
 from ..core.agent import Agent
 from ..core.state import JarvisState
+from ..rag.index import RagError
 from ..core.asistan import asistan_bul
 from ..security.permissions import RiskLevel
 from ..vision.detect import MAX_FRAME_BYTES, VisionError, build_vision
+from ..core.command_guide import panel_rows
+from ..core.custom_commands import CustomCommandStore
+from ..diagnostics import DiagnosticEngine, DiagnosticError
 from ..vision.objects import build_object_vision
 from ..vision.ocr import build_ocr
 from ..vision.identity import build_face_recognizer
@@ -52,11 +58,29 @@ from ..tools.system_tools import (
     get_ram_usage,
     get_system_info,
 )
+from ..agenda.notifier import ReminderService
+from ..agenda.store import AgendaError
 
 PANEL_HTML = Path(__file__).resolve().parents[2] / "docs" / "mockups" / "jarvis-panel.html"
 #: Uygulama penceresinin baslik cubugundaki ve gorev cubugundaki simge
 #: buradan geliyor: tarayici sayfanin favicon'unu kullaniyor.
 PANEL_ICO = Path(__file__).resolve().parents[2] / "windows" / "jarvis.ico"
+
+# Panel aramasının model bağlamını veya tarayıcıyı sınırsız içerikle
+# doldurmasına izin verilmez.
+RAG_SORGU_KARAKTER = 500
+RAG_SONUC_LIMITI = 8
+RAG_ONIZLEME_KARAKTER = 900
+
+
+class _PanelHTTPServer(ThreadingHTTPServer):
+    """Hide routine browser disconnects without hiding real server errors."""
+
+    def handle_error(self, request, client_address) -> None:
+        error = sys.exc_info()[1]
+        if isinstance(error, (ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
 
 #: How often telemetry is pushed to connected panels.
 TELEMETRY_PERIOD_S = 4.0
@@ -173,8 +197,11 @@ class PanelServer:
                  tts=None, token: str | None = None, stt=None, vision=None,
                  object_vision=None, ocr=None,
                  face_recognizer=None,
+                 custom_commands: CustomCommandStore | None = None,
                  sesli_onay_tabani: RiskLevel = RiskLevel.MEDIUM,
-                 llm_uyari: str = "") -> None:
+                 rag_auto_paths=(), rag_sync_interval: float = 60.0,
+                 llm_uyari: str = "", reminder_interval: float = 30.0,
+                 acceptance_report=None) -> None:
         self.agent = agent
         self.host = host
         self.port = port
@@ -197,12 +224,28 @@ class PanelServer:
         self.sesli_onay_tabani = sesli_onay_tabani
         #: LLM acilista yoklanip buraya yaziliyor; bos ise sorun yok.
         self.llm_uyari = llm_uyari
+        trace_path = getattr(agent.trace_log, "path", None)
+        custom_path = trace_path.parent / "custom_commands.json" if trace_path else None
+        self.custom_commands = custom_commands or CustomCommandStore(custom_path)
+        self.diagnostics = DiagnosticEngine(agent.cases) if agent.cases is not None else None
+        self.agenda = getattr(agent, "agenda", None)
+        self.reminders = ReminderService(self.agenda, agent.cases) if self.agenda else None
+        self.reminder_interval = max(1.0, float(reminder_interval))
+        self.acceptance_report = acceptance_report
         self.hub = EventHub()
         self._agent_lock = threading.Lock()
         self._speech: dict[str, str] = {}
         self._speech_lock = threading.Lock()
         self._httpd: ThreadingHTTPServer | None = None
         self._stop = threading.Event()
+        self.rag_auto_paths = tuple(Path(p).expanduser() for p in rag_auto_paths)
+        self.rag_sync_interval = max(0.05, float(rag_sync_interval))
+        self._rag_sync_lock = threading.Lock()
+        self._rag_sync = {
+            "durum": "bekliyor" if self.rag_auto_paths else "kapalı",
+            "yollar": len(self.rag_auto_paths), "son": 0.0, "hata": "",
+            "eklenen": 0, "guncellenen": 0, "silinen": 0,
+        }
 
         agent.state.subscribe(self._on_state)
         self.hub.publish("state", {"state": agent.state.state.value,
@@ -261,9 +304,9 @@ class PanelServer:
             "ocr": self.ocr.available,
             "face_recognition": self.face_recognizer.available,
             **self._rag_meta(),
-            # Not implemented yet — the panel marks these instead of faking them.
+            # Vision understanding is still staged; guided diagnostics is live.
             "vision": False,
-            "diagnostic_engine": False,
+            "diagnostic_engine": self.diagnostics is not None,
         }
 
     def _rag_meta(self) -> dict[str, Any]:
@@ -275,17 +318,94 @@ class PanelServer:
         """
         kb = getattr(self.agent, "knowledge", None)
         if kb is None:
-            return {"rag": False, "rag_parca": 0, "rag_belge": 0, "rag_anlam": False}
+            with self._rag_sync_lock:
+                sync = dict(self._rag_sync)
+            return {"rag": False, "rag_parca": 0, "rag_belge": 0,
+                    "rag_anlam": False, "rag_sync": sync}
         try:
             d = kb.stats()
         except Exception:
-            return {"rag": False, "rag_parca": 0, "rag_belge": 0, "rag_anlam": False}
+            with self._rag_sync_lock:
+                sync = dict(self._rag_sync)
+            return {"rag": False, "rag_parca": 0, "rag_belge": 0,
+                    "rag_anlam": False, "rag_sync": sync}
+        with self._rag_sync_lock:
+            sync = dict(self._rag_sync)
         return {
             "rag": bool(d.get("parca")),
             "rag_parca": int(d.get("parca", 0)),
             "rag_belge": int(d.get("belge", 0)),
             "rag_anlam": bool(d.get("anlam_aramasi")),
+            "rag_sync": sync,
         }
+
+    def bilgi_ara(self, sorgu: str, limit: int = 5) -> dict[str, Any]:
+        """Search indexed documents for the panel, with bounded output."""
+        kb = getattr(self.agent, "knowledge", None)
+        if kb is None:
+            raise RuntimeError("Bilgi tabanı bağlı değil.")
+        sorgu = (sorgu or "").strip()
+        if not sorgu:
+            raise ValueError("boş sorgu")
+        if len(sorgu) > RAG_SORGU_KARAKTER:
+            raise ValueError(f"sorgu çok uzun (en fazla {RAG_SORGU_KARAKTER} karakter)")
+        try:
+            sayi = max(1, min(int(limit), RAG_SONUC_LIMITI))
+        except (TypeError, ValueError):
+            sayi = 5
+        basladi = time.time()
+        hitler = kb.search(sorgu, limit=sayi)
+        return {
+            "sorgu": sorgu, "adet": len(hitler),
+            "sure_ms": int((time.time() - basladi) * 1000),
+            "sonuclar": [
+                {**h.as_dict(), "metin": h.metin[:RAG_ONIZLEME_KARAKTER]}
+                for h in hitler
+            ],
+        }
+
+    def teshis_baslat(self, vaka_no: int, playbook: str) -> dict[str, Any]:
+        if self.diagnostics is None:
+            raise DiagnosticError("Teşhis motoru bağlı değil.")
+        result = self.diagnostics.start(int(vaka_no), playbook)
+        self.hub.publish("diagnostic", result, retain=False)
+        return result
+
+    def teshis_yanitla(self, oturum_no: int, secenek: str) -> dict[str, Any]:
+        if self.diagnostics is None:
+            raise DiagnosticError("Teşhis motoru bağlı değil.")
+        result = self.diagnostics.answer(int(oturum_no), secenek)
+        self.hub.publish("diagnostic", result, retain=False)
+        return result
+
+    def _rag_sync_loop(self) -> None:
+        """Synchronise explicitly configured roots until the panel stops."""
+        kb = getattr(self.agent, "knowledge", None)
+        if kb is None or not self.rag_auto_paths:
+            return
+        while not self._stop.is_set():
+            toplam = {"eklenen": 0, "guncellenen": 0, "silinen": 0}
+            hatalar = []
+            with self._rag_sync_lock:
+                self._rag_sync["durum"] = "çalışıyor"
+            for yol in self.rag_auto_paths:
+                if self._stop.is_set():
+                    return
+                try:
+                    rapor = kb.index_path(yol, silinenleri_unut=True)
+                    for ad in toplam:
+                        toplam[ad] += int(getattr(rapor, ad))
+                except Exception as exc:
+                    hatalar.append(f"{yol}: {exc}")
+            with self._rag_sync_lock:
+                self._rag_sync.update(toplam)
+                self._rag_sync.update({
+                    "durum": "hata" if hatalar else "hazır",
+                    "son": time.time(), "hata": " · ".join(hatalar)[:500],
+                })
+            self.hub.publish("meta", self._meta())
+            if self._stop.wait(self.rag_sync_interval):
+                return
 
     def modul_verisi(self) -> dict[str, Any]:
         """Per-module detail for the panel's module bar.
@@ -335,8 +455,12 @@ class PanelServer:
             return {
                 "durum": "hazir" if toplam else "bos",
                 "ozet": f"{toplam} açık vaka" if toplam else "açık vaka yok",
-                "satirlar": [{"ad": f"#{v.id} {v.customer}", "deger": v.device}
+                "satirlar": [{"ad": f"#{v.id} {v.customer}",
+                               "deger": f"{v.device} · {v.status}",
+                               "aciklama": v.symptom}
                              for v in acik],
+                "playbooklar": self.diagnostics.list_playbooks()
+                if self.diagnostics is not None else [],
             }
 
         def bilgi() -> dict[str, Any]:
@@ -344,10 +468,18 @@ class PanelServer:
             if kb is None:
                 return {"durum": "yok", "ozet": "bilgi tabanı bağlı değil", "satirlar": []}
             d = kb.stats()
+            with self._rag_sync_lock:
+                sync = dict(self._rag_sync)
+            sync_degeri = ("kapalı" if not sync["yollar"] else
+                            f"{sync['durum']} · {sync['yollar']} yol")
+            sync_satirlari = [{"ad": "Otomatik eşitleme", "deger": sync_degeri}]
+            if sync["hata"]:
+                sync_satirlari.append({"ad": "Eşitleme hatası", "deger": sync["hata"]})
             if not d.get("parca"):
                 return {"durum": "bos", "ozet": "boş — henüz belge eklenmedi",
                         "satirlar": [{"ad": "Eklemek için",
-                                      "deger": "jarvis-bilgi ekle <klasör>"}]}
+                                      "deger": "jarvis-bilgi ekle <klasör>"}]
+                                    + sync_satirlari}
             belgeler = kb.documents(limit=8)
             return {
                 "durum": "hazir",
@@ -356,7 +488,8 @@ class PanelServer:
                     {"ad": "Arama", "deger":
                      "anlam + kelime" if d["anlam_aramasi"] else "yalnızca kelime"},
                     {"ad": "Gömme modeli", "deger": d["model"] or "(yok)"},
-                ] + [{"ad": b["yol"].rsplit("/", 1)[-1], "deger": f"{b['parca']} parça"}
+                ] + sync_satirlari + [
+                    {"ad": b["yol"].rsplit("/", 1)[-1], "deger": f"{b['parca']} parça"}
                      for b in belgeler],
             }
 
@@ -391,6 +524,78 @@ class PanelServer:
                         {"ad": "Makine", "deger": self.agent.machine or "(okunamadı)"},
                     ]}
 
+        def komutlar() -> dict[str, Any]:
+            satirlar = panel_rows() + [
+                {"ad": "Kişisel", "deger": item.phrase,
+                 "aciklama": f"Öğretilen karşılık: {item.expansion}", "komut": item.phrase,
+                 "kisisel": "1"}
+                for item in self.custom_commands.all()
+            ]
+            return {
+                "durum": "hazir",
+                "ozet": f"{len(satirlar)} komut · {len(self.custom_commands.all())} kişisel",
+                "satirlar": satirlar,
+            }
+
+        def kayitlar() -> dict[str, Any]:
+            traces = list(self.agent.trace_log.entries[-12:])
+            errors = sum(t.response_status != "ok" for t in traces)
+            return {"durum": "hazir" if traces else "bos",
+                    "ozet": f"{len(traces)} son işlem · {errors} hata",
+                    "satirlar": [
+                        {"ad": t.detected_intent,
+                         "deger": f"{t.response_status} · {t.latency_ms:.0f} ms",
+                         "aciklama": t.error or ", ".join(t.tools_used) or "araç kullanılmadı"}
+                        for t in reversed(traces)]}
+
+        def saglik() -> dict[str, Any]:
+            t = collect_telemetry()
+            ram, disk, gpu = t["ram"], t["disk"], t["gpu"]
+            satirlar = [
+                {"ad": "CPU", "deger": f"%{t['cpu']['percent']:.0f}"},
+                {"ad": "RAM", "deger": f"%{ram['percent']:.0f} · {max(0.0, ram['total_gb'] - ram['used_gb']):.1f} GB boş"},
+                {"ad": "Disk", "deger": f"%{disk['used_percent']:.0f} · SMART {disk['smart'] or 'bilinmiyor'}"},
+                {"ad": "GPU", "deger": (f"{gpu.get('name') or 'GPU'} · {gpu.get('temp_c') or '—'} °C"
+                                           if gpu.get("available") else "algılanmadı")},
+                {"ad": "Model", "deger": getattr(self.agent.llm, "model", "") or self.agent.llm.name},
+                {"ad": "Güvenlik", "deger": "izin ve denetim katmanı etkin"},
+            ]
+            kritik = ram["percent"] >= 95 or disk["used_percent"] >= 95
+            return {"durum": "uyari" if kritik else "hazir",
+                    "ozet": "dikkat gerekli" if kritik else "temel kontroller normal",
+                    "satirlar": satirlar}
+
+        def ajanda() -> dict[str, Any]:
+            if self.agenda is None:
+                return {"durum": "yok", "ozet": "ajanda bağlı değil", "satirlar": []}
+            now = time.time()
+            items = self.agenda.list("acik")
+            promised = self.agent.cases.promised_cases(now + 86400) if self.agent.cases else []
+            rows = [{"ad": f"#{x.id} {x.title}", "deger": x.kind,
+                     "aciklama": time.strftime("%d.%m.%Y %H:%M", time.localtime(x.due_ts)),
+                     "kayit_no": x.id, "gecikti": x.due_ts < now} for x in items]
+            rows += [{"ad": f"Vaka #{x.id} · {x.customer}", "deger": "teslim",
+                      "aciklama": time.strftime("%d.%m.%Y %H:%M", time.localtime(x.promised_ts))}
+                     for x in promised]
+            overdue = sum(x.due_ts < now for x in items)
+            return {"durum": "uyari" if overdue else ("hazir" if rows else "bos"),
+                    "ozet": f"{len(rows)} açık · {overdue} geciken" if rows else "henüz kayıt yok",
+                    "satirlar": rows}
+
+        def kabul() -> dict[str, Any]:
+            if self.acceptance_report is None:
+                return {"durum": "yok", "ozet": "kabul testi çalıştırılmadı", "satirlar": []}
+            report = self.acceptance_report.as_dict()
+            counts = report["counts"]
+            return {
+                "durum": report["status"],
+                "ozet": f"{counts['hazir']} hazır · {counts['eksik']} eksik · {counts['arizali']} arızalı",
+                "satirlar": [{"ad": x["name"], "deger": x["status"],
+                               "aciklama": x["detail"] +
+                               (f" · Çözüm: {x['fix']}" if x["fix"] and x["status"] != "hazir" else "")}
+                              for x in report["checks"]],
+            }
+
         return {
             "sistem": guvenli(sistem, {"durum": "yok", "ozet": "", "satirlar": []}),
             "ses": guvenli(ses, {"durum": "yok", "ozet": "", "satirlar": []}),
@@ -399,11 +604,11 @@ class PanelServer:
             "hafiza": guvenli(hafiza, {"durum": "yok", "ozet": "", "satirlar": []}),
             "bilgi": guvenli(bilgi, {"durum": "yok", "ozet": "", "satirlar": []}),
             "araclar": guvenli(araclar, {"durum": "yok", "ozet": "", "satirlar": []}),
-            # Henüz yok. Uydurma veri yerine açıkça söylüyoruz.
-            "ajanda": {"durum": "yok",
-                       "ozet": "bu modül henüz yapılmadı",
-                       "satirlar": [{"ad": "Planlanan",
-                                     "deger": "randevu ve teslim tarihleri"}]},
+            "komutlar": guvenli(komutlar, {"durum": "yok", "ozet": "", "satirlar": []}),
+            "kayitlar": guvenli(kayitlar, {"durum": "yok", "ozet": "log okunamadı", "satirlar": []}),
+            "saglik": guvenli(saglik, {"durum": "yok", "ozet": "sağlık ölçülemedi", "satirlar": []}),
+            "ajanda": guvenli(ajanda, {"durum": "yok", "ozet": "ajanda okunamadı", "satirlar": []}),
+            "kabul": guvenli(kabul, {"durum": "yok", "ozet": "kabul raporu okunamadı", "satirlar": []}),
         }
 
     # ---------------- agent plumbing ----------------
@@ -411,7 +616,8 @@ class PanelServer:
     def _on_state(self, old: JarvisState, new: JarvisState) -> None:
         self.hub.publish("state", {"state": new.value, "label": new.label_tr})
 
-    def ask(self, text: str, *, speech: SpeechNormalization | None = None
+    def ask(self, text: str, *, speech: SpeechNormalization | None = None,
+            approved_high: bool = False
             ) -> tuple[str, str | None]:
         """One agent turn, serialised — the agent holds mutable history.
 
@@ -420,16 +626,27 @@ class PanelServer:
         so the written answer appears immediately instead of waiting on audio.
         """
         self.hub.publish("transcript", {"role": "user", "text": text}, retain=False)
+        resolved = self.custom_commands.resolve(text)
+        agent_text = resolved or text
         with self._agent_lock:
-            if speech is None:
-                answer = self.agent.ask(text)
-            else:
-                answer = self.agent.ask(
-                    text,
-                    original_text=speech.original_text,
-                    speech_confidence=speech.confidence,
-                    speech_ambiguity=speech.ambiguity,
-                )
+            permissions = self.agent.tools.permissions
+            previous_approver = permissions.approver
+            if approved_high and speech is None:
+                # Browser approval is deliberately valid for this one turn and
+                # HIGH only. CRITICAL operations still require typed CLI approval.
+                permissions.approver = lambda _tool, risk, _args, _prompt: risk == RiskLevel.HIGH
+            try:
+                if speech is None:
+                    answer = self.agent.ask(agent_text)
+                else:
+                    answer = self.agent.ask(
+                        agent_text,
+                        original_text=speech.original_text,
+                        speech_confidence=speech.confidence,
+                        speech_ambiguity=speech.ambiguity,
+                    )
+            finally:
+                permissions.approver = previous_approver
         self.hub.publish("transcript", {"role": "assistant", "text": answer}, retain=False)
 
         speech_id = None
@@ -527,13 +744,26 @@ class PanelServer:
                 pass  # a telemetry hiccup must never kill the server
             self._stop.wait(TELEMETRY_PERIOD_S)
 
+    def _reminder_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                for event in self.reminders.run_once():
+                    self.hub.publish("agenda", event, retain=False)
+            except Exception:
+                pass
+            self._stop.wait(self.reminder_interval)
+
     # ---------------- lifecycle ----------------
 
     def serve_forever(self) -> None:
         handler = _make_handler(self)
-        self._httpd = ThreadingHTTPServer((self.host, self.port), handler)
+        self._httpd = _PanelHTTPServer((self.host, self.port), handler)
         self._httpd.daemon_threads = True
         threading.Thread(target=self._telemetry_loop, daemon=True).start()
+        if self.reminders is not None:
+            threading.Thread(target=self._reminder_loop, daemon=True).start()
+        if self.rag_auto_paths:
+            threading.Thread(target=self._rag_sync_loop, daemon=True).start()
         try:
             self._httpd.serve_forever()
         finally:
@@ -632,6 +862,8 @@ def _make_handler(server: PanelServer):
 
             if path == "/favicon.ico":
                 return self._serve_ico()
+            if path == "/manifest.webmanifest":
+                return self._serve_manifest()
 
             if not self._authorised():
                 return self._reject()
@@ -649,6 +881,8 @@ def _make_handler(server: PanelServer):
             if not self._authorised():
                 return self._reject()
             path = urllib.parse.urlparse(self.path).path
+            if path == "/bilgi/ara":
+                return self._handle_bilgi_ara()
             if path == "/listen":
                 return self._handle_listen()
             if path == "/konus":
@@ -659,6 +893,20 @@ def _make_handler(server: PanelServer):
                 return self._handle_objects()
             if path == "/ocr":
                 return self._handle_ocr()
+            if path == "/komut-ogret":
+                return self._handle_custom_command()
+            if path == "/komut-sil":
+                return self._handle_custom_command(delete=True)
+            if path == "/komut-analiz":
+                return self._handle_command_analysis()
+            if path == "/teshis/baslat":
+                return self._handle_diagnostic(start=True)
+            if path == "/teshis/yanit":
+                return self._handle_diagnostic(start=False)
+            if path == "/ajanda/ekle":
+                return self._handle_agenda("ekle")
+            if path == "/ajanda/durum":
+                return self._handle_agenda("durum")
             if path != "/ask":
                 return self._json(404, {"error": "bulunamadı"})
             try:
@@ -670,10 +918,109 @@ def _make_handler(server: PanelServer):
             if not text:
                 return self._json(400, {"error": "boş mesaj"})
             try:
-                answer, speech_id = server.ask(text)
+                answer, speech_id = server.ask(
+                    text, approved_high=bool(payload.get("approve_high", False)))
                 return self._json(200, {"answer": answer, "speech_id": speech_id})
             except Exception as exc:
                 return self._json(500, {"error": f"{type(exc).__name__}: {exc}"})
+
+        def _handle_custom_command(self, *, delete: bool = False) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    return self._json(400, {"error": "geçersiz istek boyutu"})
+                payload = json.loads(self.rfile.read(length))
+                phrase = str(payload.get("phrase", "")).strip()
+                if delete:
+                    return self._json(200, {"deleted": server.custom_commands.delete(phrase)})
+                item = server.custom_commands.teach(
+                    phrase, str(payload.get("expansion", "")).strip())
+                return self._json(200, {"saved": True, "phrase": item.phrase,
+                                        "expansion": item.expansion})
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return self._json(400, {"error": str(exc)})
+
+        def _handle_command_analysis(self) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    return self._json(400, {"error": "geçersiz istek boyutu"})
+                payload = json.loads(self.rfile.read(length))
+                original = str(payload.get("text", "")).strip()
+                if not original:
+                    return self._json(400, {"error": "boş mesaj"})
+                resolved = server.custom_commands.resolve(original) or original
+                decision = server.agent.intent_router.route(resolved)
+                return self._json(200, {
+                    "intent": decision.intent.value,
+                    "risk": decision.risk.label,
+                    "needs_confirmation": decision.needs_confirmation,
+                    "reason": decision.reason,
+                    "resolved": resolved if resolved != original else "",
+                })
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return self._json(400, {"error": str(exc)})
+
+        def _handle_bilgi_ara(self) -> None:
+            """Bounded, read-only knowledge search for the Bilgi tab."""
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return self._json(400, {"error": "geçersiz uzunluk"})
+            if length <= 0 or length > 4096:
+                return self._json(400 if length <= 0 else 413,
+                                  {"error": "boş istek" if length <= 0 else
+                                   "arama isteği çok büyük"})
+            try:
+                payload = json.loads(self.rfile.read(length))
+                sorgu = str(payload.get("sorgu", ""))
+                limit = payload.get("limit", 5)
+                return self._json(200, server.bilgi_ara(sorgu, limit))
+            except json.JSONDecodeError:
+                return self._json(400, {"error": "geçersiz istek"})
+            except (ValueError, RagError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception as exc:
+                return self._json(500, {"error": f"Bilgi tabanı okunamadı: {exc}"})
+
+        def _handle_diagnostic(self, *, start: bool) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    return self._json(400 if length <= 0 else 413,
+                                      {"error": "geçersiz istek boyutu"})
+                payload = json.loads(self.rfile.read(length))
+                if start:
+                    result = server.teshis_baslat(
+                        int(payload.get("vaka_no", 0)), str(payload.get("playbook", "")))
+                else:
+                    result = server.teshis_yanitla(
+                        int(payload.get("oturum_no", 0)), str(payload.get("secenek", "")))
+                return self._json(200, result)
+            except (ValueError, TypeError, json.JSONDecodeError, DiagnosticError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception as exc:
+                return self._json(500, {"error": f"Teşhis işlemi başarısız: {exc}"})
+
+        def _handle_agenda(self, action: str) -> None:
+            if server.agenda is None:
+                return self._json(503, {"error": "ajanda bağlı değil"})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 8192:
+                    return self._json(400 if length <= 0 else 413, {"error": "geçersiz istek boyutu"})
+                p = json.loads(self.rfile.read(length))
+                if action == "ekle":
+                    item = server.agenda.create(str(p.get("baslik", "")), str(p.get("tur", "")),
+                        p.get("son_tarih", ""), p.get("hatirlatma"), str(p.get("notlar", "")),
+                        p.get("vaka_no"))
+                else:
+                    item = server.agenda.set_status(int(p.get("kayit_no", 0)),
+                                                    str(p.get("durum", "")))
+                server.hub.publish("agenda", {"action": action, "item": item.as_dict()}, retain=False)
+                return self._json(200, {"ok": True, "kayit": item.as_dict()})
+            except (AgendaError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                return self._json(400, {"error": str(exc)})
 
         def _handle_listen(self) -> None:
             """Transcribe the posted recording locally and return the text."""
@@ -819,6 +1166,35 @@ def _make_handler(server: PanelServer):
             self.send_header("Cache-Control", "max-age=86400")
             self.end_headers()
             self.wfile.write(govde)
+
+        def _serve_manifest(self) -> None:
+            """Serve public install metadata without embedding the panel token."""
+            manifest = {
+                "id": "/",
+                "name": "J.A.R.V.I.S. Neural Core",
+                "short_name": "J.A.R.V.I.S.",
+                "description": "Yerel yapay zeka teknisyen asistanı",
+                "lang": "tr",
+                "start_url": "/",
+                "scope": "/",
+                "display": "standalone",
+                "orientation": "any",
+                "background_color": "#05090e",
+                "theme_color": "#05090e",
+                "icons": [{
+                    "src": "/favicon.ico",
+                    "sizes": "16x16 20x20 24x24 32x32 40x40 48x48 64x64 128x128 256x256",
+                    "type": "image/x-icon",
+                    "purpose": "any",
+                }],
+            }
+            body = json.dumps(manifest, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/manifest+json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            self.wfile.write(body)
 
         def _serve_panel(self) -> None:
             if not PANEL_HTML.is_file():

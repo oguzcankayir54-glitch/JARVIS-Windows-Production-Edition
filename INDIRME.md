@@ -1,111 +1,48 @@
-# Nereden indirilir, nasıl kurulur
+# J.A.R.V.I.S. indirme ve kurulum
 
-> Bu dosya tek bir soruyu cevaplamak için var: **"yeni sürümü nereden
-> indireceğim?"** Tıklama tıklama aşağıda.
+## Windows için önerilen indirme
 
----
+Hazır kurulum paketini indirin:
 
-## İndirme
+**[JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.9/JARVIS-Setup-2.0.1.exe)**
 
-> **Depo özel olduğu için kopyalanabilir bir indirme linki yok.** Özel
-> depolarda ZIP adresi kişiye özel ve kısa ömürlü bir jeton taşıyor; o
-> jetonu ancak GitHub'ın kendi düğmesi üretiyor.
->
-> Bu denendi ve iki biçim de tarayıcıda **404 verdi**:
-> `github.com/.../archive/refs/heads/DAL.zip` ve
-> `codeload.github.com/.../zip/refs/heads/DAL`. İkincisi jetonla yapılan
-> testte 200 dönüyordu — tarayıcı o jetonu göndermediği için yanıltıcıydı.
+Dosyaya çift tıklayın ve kurulum sihirbazını tamamlayın. Paket henüz kod
+imzalı olmadığı için SmartScreen görünürse **Daha fazla bilgi → Yine de
+çalıştır** seçeneğini kullanın.
 
-### Düğmeyle indirme (çalışan yol)
+Paket bütünlüğünü doğrulamak isteyenler aynı Release içindeki
+`JARVIS-Setup-2.0.1.exe.sha256` dosyasını kullanabilir.
 
-1. Şunu tarayıcıda açın:
+## Kaynak koddan kurulum
 
-   ```
-   https://github.com/oguzcankayir54-glitch/jarvis
-   ```
+1. [Production Edition deposunu](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition) açın.
+2. Dal olarak `feat/complete-project-sync` seçin.
+3. **Code → Download ZIP** seçeneğine basın.
+4. ZIP'i ayıklayıp `windows\Kur.cmd` dosyasına çift tıklayın.
 
-2. Dosya listesinin sol üstündeki **dal seçicisine** tıklayın
-   (üzerinde `main` yazan açılır kutu)
+Git ile:
 
-3. Listeden şunu seçin:
-
-   ```
-   claude/jarvis-architecture-analysis-40i73f
-   ```
-
-4. Sağdaki yeşil **`< > Code`** düğmesine tıklayın
-
-5. Açılan menüde **Download ZIP**
-
-### Daha kolayı
-
-ZIP'i sohbette doğrudan isteyin — hazırlanıp dosya olarak gönderilir,
-GitHub'a hiç girmeniz gerekmez.
-
----
-
-## Kurulum
-
-1. İnen dosyaya **sağ tık → Tümünü ayıkla**
-2. Ayıklanan klasörde `windows` klasörünü açın
-3. İçindeki **`Kur.cmd`** dosyasına **çift tıklayın**
-
-Terminal açmanız, klasöre gitmeniz, komut yazmanız gerekmiyor.
-
-### Bittiğinde göreceğiniz satırlar
-
-```
-✓ jarvis.ini yazildi (mod = windows, port 8765)
-...
-✓ masaustu: J.A.R.V.I.S.
+```text
+git clone --branch feat/complete-project-sync https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition.git
 ```
 
-Daha önce F.R.I.D.A.Y. kurduysanız bir de şunu görürsünüz — ikinci
-asistan kaldırıldı ve kurulum kendi bıraktığını topluyor:
+## Güncellemede korunanlar
 
-```
-✓ eski F.R.I.D.A.Y. kalintisi silindi: F.R.I.D.A.Y..lnk
-✓ eski F.R.I.D.A.Y. kalintisi silindi: friday.ini
-```
-
----
-
-## Güncellerken ne kaybolur?
-
-**Hiçbir şey.** Kurulum kodu `%LOCALAPPDATA%\Programs\JARVIS\app` altına
-kopyalıyor ve şunlara **dokunmuyor**:
-
-| | nerede | durumu |
+| Veri | Konum | Davranış |
 |---|---|---|
-| `.env` (Ollama ayarı, anahtarlar) | `...\JARVIS\app\.env` | korunur |
-| Erişim jetonu | `...\JARVIS\jarvis.ini` | korunur |
-| Hafıza, vakalar, bilgi tabanı | `%USERPROFILE%\.jarvis` | dokunulmaz |
-| Sanal ortam | `...\JARVIS\app\.venv` | korunur |
+| `.env` ve servis anahtarları | `%LOCALAPPDATA%\Programs\JARVIS\app\.env` | Korunur |
+| Panel jetonu | `%LOCALAPPDATA%\Programs\JARVIS\jarvis.ini` | Korunur |
+| Hafıza, vakalar ve bilgi tabanı | `%USERPROFILE%\.jarvis` | Korunur |
+| Sanal ortam | `%LOCALAPPDATA%\Programs\JARVIS\app\.venv` | Korunur |
 
-Yani indirip kurmak, ayarlarınızı sıfırlamıyor.
+Güncellemeden önce doğrulanmış bir yedek almak için:
 
----
-
-## İndirilen klasörler birikiyorsa
-
-Her indirmede `...-40i73f_2`, `_3` diye yeni klasör oluşuyorsa bu normal —
-Windows aynı adı ikinci kez kullanmıyor. Kurulum bittikten sonra
-**indirilen klasörü silebilirsiniz**; program artık
-`%LOCALAPPDATA%\Programs\JARVIS` altında ve masaüstü simgesi oraya
-bakıyor.
-
----
-
-## Kaldırmak
-
-`windows\Kur.cmd` dosyasını `/kaldir` ile çalıştırın, ya da:
-
-**Windows Gezgini'nde `windows` klasöründeyken adres çubuğuna `cmd` yazıp
-Enter'a basın**, açılan pencereye:
-
-```
-Kur.cmd /kaldir
+```text
+jarvis-yedek olustur "%USERPROFILE%\Documents\jarvis-yedek.zip"
 ```
 
-Masaüstü ve Başlat menüsü simgeleri silinir. Hafızanız (`~/.jarvis`)
-durur; onu istemiyorsanız elle silin.
+## Kaldırma
+
+Windows **Ayarlar → Uygulamalar → Yüklü uygulamalar** bölümünden
+J.A.R.V.I.S.'i kaldırın. Kaynak kurulumunda `windows\Kur.cmd /kaldir`
+kullanılabilir. Kullanıcı verileri bilinçli olarak silinmez.

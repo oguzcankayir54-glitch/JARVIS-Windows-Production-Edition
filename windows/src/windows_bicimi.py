@@ -28,6 +28,7 @@ WINDOWS = BURASI.parent
 DOSYALAR = (
     (WINDOWS / "src" / "kur.ps1", True),
     (WINDOWS / "src" / "kur-windows.ps1", True),
+    (WINDOWS / "src" / "watchdog.ps1", True),
     (WINDOWS / "Kur.cmd", False),
     (WINDOWS / "jarvis.ini", True),
 )
@@ -78,6 +79,9 @@ def denetle() -> int:
 
 
 def main() -> int:
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="backslashreplace")
     if "--denetle" in sys.argv:
         return 1 if denetle() else 0
     for yol, bom_ister in DOSYALAR:

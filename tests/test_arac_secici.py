@@ -53,6 +53,7 @@ def _adlar(secilen):
     ("bunu hatırla: parolam kasada", "remember_fact"),
     ("ekran kartı fiyatlarını internetten araştır", "web_ara"),
     ("bu vakayı kaydet", "vaka_ac"),
+    ("bu vaka için teşhis başlat", "teshis_baslat"),
 ])
 def test_the_right_tool_survives_the_narrowing(semalar, soru, beklenen):
     assert beklenen in _adlar(araclari_sec(semalar, soru))

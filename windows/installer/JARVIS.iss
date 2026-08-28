@@ -35,6 +35,7 @@ Source: "{#ProjectRoot}\windows\JARVIS.exe"; DestDir: "{tmp}\jarvis-kaynak\windo
 Source: "{#ProjectRoot}\windows\jarvis.ico"; DestDir: "{tmp}\jarvis-kaynak\windows"; Flags: ignoreversion deleteafterinstall
 Source: "{#ProjectRoot}\windows\jarvis.ini"; DestDir: "{tmp}\jarvis-kaynak\windows"; Flags: ignoreversion deleteafterinstall
 Source: "{#ProjectRoot}\windows\src\kur-windows.ps1"; DestDir: "{tmp}\jarvis-kaynak\windows\src"; Flags: ignoreversion deleteafterinstall
+Source: "{#ProjectRoot}\windows\src\watchdog.ps1"; DestDir: "{tmp}\jarvis-kaynak\windows\src"; Flags: ignoreversion deleteafterinstall
 
 [Run]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\jarvis-kaynak\windows\src\kur-windows.ps1"" -Sessiz"; WorkingDir: "{tmp}\jarvis-kaynak"; Description: "J.A.R.V.I.S. dosyalarini ve Python ortamını kuruyor"; StatusMsg: "J.A.R.V.I.S. kuruluyor; Python paketleri indiriliyor..."; Flags: waituntilterminated
@@ -48,8 +49,8 @@ Name: "{group}\J.A.R.V.I.S."; Filename: "{app}\JARVIS.exe"; WorkingDir: "{app}";
 [UninstallDelete]
 ; Hafiza ve kullanici verileri {userprofile}\.jarvis altinda tutulur ve
 ; bilerek bu listenin disindadir.
+Type: files; Name: "{userstartup}\J.A.R.V.I.S. Watchdog.lnk"
 Type: filesandordirs; Name: "{app}\app"
 Type: files; Name: "{app}\JARVIS.exe"
 Type: files; Name: "{app}\jarvis.ico"
 Type: files; Name: "{app}\jarvis.ini"
-

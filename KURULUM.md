@@ -7,23 +7,17 @@ Sıfırdan çalıştırmak için adım adım kılavuz. Tahmini süre: **5 dakika
 
 ## Adım 1 — Kodu indir
 
-**Windows kullanıyorsanız: [INDIRME.md](INDIRME.md)** — tıklanabilir
-indirme adresi ve çift tıklamalı kurulum orada.
-
-Depo **özel** olduğu için kopyalanabilir bir ZIP adresi yok: özel
-depolarda o adres kişiye özel bir jeton taşıyor ve onu yalnızca GitHub'ın
-kendi **Download ZIP** düğmesi üretiyor. Adımlar `INDIRME.md` içinde.
+**Windows kullanıyorsanız: [INDIRME.md](INDIRME.md)** — hazır Setup EXE,
+SHA-256 doğrulaması ve kaynak kurulum seçeneği orada.
 
 Git ile:
 
 ```bash
-git clone https://github.com/oguzcankayir54-glitch/jarvis.git
-cd jarvis
-git checkout claude/jarvis-architecture-analysis-40i73f
+git clone --branch feat/complete-project-sync https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition.git
+cd JARVIS-Windows-Production-Edition
 ```
 
-> Elle yazılan ZIP adresleri bu depoda çalışmaz (özel depo + dal adında
-> `/`). İkisi de denendi, ikisi de tarayıcıda 404 verdi.
+> Günlük kullanıcı için Git yerine `INDIRME.md` içindeki Setup EXE önerilir.
 
 ---
 

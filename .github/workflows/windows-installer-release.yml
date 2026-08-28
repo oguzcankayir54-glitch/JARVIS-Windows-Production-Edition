@@ -1,0 +1,84 @@
+name: Windows installer release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Test bagimliliklarini kur
+        shell: pwsh
+        run: python -m pip install -e ".[dev]"
+
+      - name: Windows kabul ve regresyon testleri
+        shell: pwsh
+        run: python scripts/windows_acceptance.py
+
+  build-and-release:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Inno Setup derleyicisini bul
+        id: inno
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup --no-progress -y
+            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw "Inno Setup derleyicisi bulunamadi." }
+          "path=$iscc" >> $env:GITHUB_OUTPUT
+
+      - name: JARVIS Setup paketini derle
+        shell: pwsh
+        run: '& "${{ steps.inno.outputs.path }}" "windows\installer\JARVIS.iss"'
+
+      - name: Paketi ve ozetini dogrula
+        shell: pwsh
+        run: |
+          $setup = "windows\release\JARVIS-Setup-2.0.1.exe"
+          if (-not (Test-Path $setup)) { throw "Kurulum paketi uretilmedi: $setup" }
+          if ((Get-Item $setup).Length -lt 1MB) { throw "Kurulum paketi beklenenden kucuk." }
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  JARVIS-Setup-2.0.1.exe" | Set-Content "windows\release\JARVIS-Setup-2.0.1.exe.sha256" -Encoding ascii
+
+      - name: Derleme ciktisini sakla
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-Setup-2.0.1
+          path: |
+            windows/release/JARVIS-Setup-2.0.1.exe
+            windows/release/JARVIS-Setup-2.0.1.exe.sha256
+          if-no-files-found: error
+
+      - name: GitHub Release olustur
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" "windows\release\JARVIS-Setup-2.0.1.exe" "windows\release\JARVIS-Setup-2.0.1.exe.sha256" --repo "${{ github.repository }}" --title "J.A.R.V.I.S. Windows Production 2.0.1" --notes "Windows Production Edition kurulum paketi. SHA-256 dosyasi paketin butunlugunu dogrulamak icindir." --prerelease

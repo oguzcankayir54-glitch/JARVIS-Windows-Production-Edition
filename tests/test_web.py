@@ -10,7 +10,38 @@ import pytest
 from jarvis.bootstrap import build_agent
 from jarvis.config import Config
 from jarvis.memory.store import MemoryStore
-from jarvis.web.server import PanelServer, collect_telemetry
+from jarvis.rag.index import KnowledgeBase
+from jarvis.web.server import PanelServer, _PanelHTTPServer, collect_telemetry
+
+
+def test_ordinary_client_disconnect_is_not_reported(monkeypatch):
+    reported = []
+    monkeypatch.setattr(
+        "http.server.ThreadingHTTPServer.handle_error",
+        lambda self, request, address: reported.append(address),
+    )
+    httpd = object.__new__(_PanelHTTPServer)
+
+    try:
+        raise ConnectionResetError("tarayıcı ayrıldı")
+    except ConnectionResetError:
+        httpd.handle_error(None, ("127.0.0.1", 1234))
+    assert reported == []
+
+
+def test_real_server_error_is_still_reported(monkeypatch):
+    reported = []
+    monkeypatch.setattr(
+        "http.server.ThreadingHTTPServer.handle_error",
+        lambda self, request, address: reported.append(address),
+    )
+    httpd = object.__new__(_PanelHTTPServer)
+
+    try:
+        raise ValueError("gerçek hata")
+    except ValueError:
+        httpd.handle_error(None, ("127.0.0.1", 5678))
+    assert reported == [("127.0.0.1", 5678)]
 
 
 def _hazir_bekle(srv, timeout: float = 5.0) -> None:
@@ -78,6 +109,13 @@ def test_panel_is_served_in_live_mode(server):
     assert "Neural Core" in html
 
 
+def test_panel_contains_interactive_knowledge_search(server):
+    _, html = _get(server, "/")
+    assert 'id="bilgiForm"' in html
+    assert 'fetch("/bilgi/ara"' in html
+    assert "metin.textContent = h.metin" in html
+
+
 def test_ask_returns_answer(server):
     status, body = _post(server, "/ask", {"text": "sistem durumu nedir?"})
     assert status == 200
@@ -89,6 +127,33 @@ def test_empty_ask_rejected(server):
     with pytest.raises(urllib.error.HTTPError) as exc:
         _post(server, "/ask", {"text": "   "})
     assert exc.value.code == 400
+
+
+def test_custom_command_can_be_taught_and_used(server):
+    status, body = _post(server, "/komut-ogret", {
+        "phrase": "hızlı kontrol", "expansion": "sistem durumu nedir?"})
+    assert status == 200 and body["saved"] is True
+    status, body = _post(server, "/ask", {"text": "Hızlı kontrol"})
+    assert status == 200
+    assert "CPU" in body["answer"] or "RAM" in body["answer"]
+
+
+def test_command_analysis_resolves_custom_alias(server):
+    _post(server, "/komut-ogret", {
+        "phrase": "hızlı kontrol", "expansion": "sistem durumu nedir?"})
+    status, body = _post(server, "/komut-analiz", {"text": "HIZLI KONTROL"})
+    assert status == 200
+    assert body["intent"] == "SYSTEM_MONITOR"
+    assert body["risk"] == "LOW"
+    assert body["resolved"] == "sistem durumu nedir?"
+
+
+def test_modules_expose_health_logs_and_personal_commands(server):
+    server.agent.ask("merhaba")
+    modules = server.modul_verisi()
+    assert modules["saglik"]["satirlar"]
+    assert modules["kayitlar"]["satirlar"]
+    assert "komutlar" in modules
 
 
 def test_unknown_route_404(server):
@@ -111,12 +176,12 @@ def test_events_stream_replays_state_and_meta(server):
     assert {"state", "meta"} <= set(seen), f"beklenen olaylar gelmedi: {seen}"
 
 
-def test_meta_reports_unimplemented_modules_as_false(server):
+def test_meta_reports_only_truly_unimplemented_modules_as_false(server):
     """The panel must be told what does not exist, so it shows no invented data."""
     meta = server._meta()
     assert meta["rag"] is False
     assert meta["vision"] is False
-    assert meta["diagnostic_engine"] is False
+    assert meta["diagnostic_engine"] is True
     assert meta["tools"] > 0
 
 
@@ -522,14 +587,15 @@ def test_the_floor_setting_can_never_loosen_the_gate(ayar):
 # panelin ilk sürümünden beri aynı: ölçmediği bir sayıyı göstermez.
 
 MODUL_ADLARI = {"sistem", "ses", "goruntu", "teshis",
-                "hafiza", "bilgi", "araclar", "ajanda"}
+                "hafiza", "bilgi", "araclar", "komutlar", "saglik",
+                "kayitlar", "ajanda", "kabul"}
 
 
 def test_every_module_tab_has_data(server):
     veri = server.modul_verisi()
     assert set(veri) == MODUL_ADLARI
     for ad, d in veri.items():
-        assert d["durum"] in ("hazir", "bos", "yok"), ad
+        assert d["durum"] in ("hazir", "bos", "yok", "eksik", "arizali"), ad
         assert isinstance(d["satirlar"], list), ad
 
 
@@ -555,16 +621,122 @@ def test_the_tools_tab_lists_real_tools_with_their_risk(server):
     assert all(s["deger"] for s in araclar["satirlar"]), "risk etiketi eksik"
 
 
-def test_an_unimplemented_module_says_so_instead_of_inventing(server):
+def test_agenda_module_is_empty_instead_of_inventing_data(server):
     ajanda = server.modul_verisi()["ajanda"]
-    assert ajanda["durum"] == "yok"
+    assert ajanda["durum"] == "bos"
+    assert ajanda["satirlar"] == []
     assert "henüz" in ajanda["ozet"]
+
+
+def test_acceptance_module_exposes_real_report_rows(server):
+    from jarvis.acceptance.engine import AcceptanceCheck, AcceptanceReport
+    report = AcceptanceReport((
+        AcceptanceCheck("python", "Python", "hazir", "3.12", required=True),
+        AcceptanceCheck("camera", "Kamera", "eksik", "Ayar kapalı.", "Kamerayı açın."),
+    ))
+    data = PanelServer(server.agent, acceptance_report=report).modul_verisi()["kabul"]
+    assert data["durum"] == "eksik"
+    assert len(data["satirlar"]) == 2
+    assert "Çözüm: Kamerayı açın." in data["satirlar"][1]["aciklama"]
 
 
 def test_an_empty_knowledge_tab_says_how_to_fill_it(server):
     bilgi = server.modul_verisi()["bilgi"]
     assert bilgi["durum"] == "bos"
     assert any("jarvis-bilgi ekle" in s["deger"] for s in bilgi["satirlar"])
+
+
+def test_knowledge_tab_exposes_the_auto_sync_error(server):
+    with server._rag_sync_lock:
+        server._rag_sync.update({
+            "durum": "hata", "yollar": 1,
+            "hata": "/olmayan: Yol yok", "son": 0.0,
+        })
+    satirlar = server.modul_verisi()["bilgi"]["satirlar"]
+    assert any(s["ad"] == "Eşitleme hatası" and "Yol yok" in s["deger"]
+               for s in satirlar)
+
+
+def _bilgili_panel(tmp_path, token=""):
+    kb = KnowledgeBase(":memory:")
+    kb.index_text("/notlar/ekran.md", "# Ekran\n\nDisplayPort kablosunu kontrol edin.\n")
+    cfg = Config(llm_provider="mock", non_interactive=True)
+    agent = build_agent(cfg, memory=MemoryStore(":memory:"), knowledge=kb)
+    srv = PanelServer(agent, host="127.0.0.1", port=0, token=token)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    _hazir_bekle(srv)
+    return srv
+
+
+def test_knowledge_search_endpoint_returns_citable_results(tmp_path):
+    srv = _bilgili_panel(tmp_path)
+    try:
+        status, body = _post(srv, "/bilgi/ara", {"sorgu": "DisplayPort"})
+        assert status == 200
+        assert body["adet"] == 1
+        assert body["sonuclar"][0]["kaynak"].startswith("/notlar/ekran.md:")
+        assert body["sonuclar"][0]["neden"] == "kelime"
+    finally:
+        srv.shutdown()
+
+
+def test_knowledge_search_rejects_empty_and_overlong_queries(tmp_path):
+    srv = _bilgili_panel(tmp_path)
+    try:
+        for sorgu in ("", "x" * 501):
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                _post(srv, "/bilgi/ara", {"sorgu": sorgu})
+            assert exc.value.code == 400
+    finally:
+        srv.shutdown()
+
+
+def test_knowledge_search_requires_panel_token(tmp_path):
+    srv = _bilgili_panel(tmp_path, token="gizli")
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{srv.port}/bilgi/ara",
+            data=json.dumps({"sorgu": "DisplayPort"}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=5)
+        assert exc.value.code == 401
+    finally:
+        srv.shutdown()
+
+
+def test_background_sync_adds_changes_and_removes_documents(tmp_path):
+    kaynak = tmp_path / "bilgi"
+    kaynak.mkdir()
+    belge = kaynak / "not.md"
+    belge.write_text("ilkbenzersiz", encoding="utf-8")
+    kb = KnowledgeBase(":memory:")
+    cfg = Config(llm_provider="mock", non_interactive=True)
+    agent = build_agent(cfg, memory=MemoryStore(":memory:"), knowledge=kb)
+    srv = PanelServer(agent, host="127.0.0.1", port=0,
+                      rag_auto_paths=[kaynak], rag_sync_interval=0.05)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    _hazir_bekle(srv)
+    try:
+        deadline = time.time() + 3
+        while time.time() < deadline and not kb.search("ilkbenzersiz"):
+            time.sleep(0.03)
+        assert kb.search("ilkbenzersiz")
+
+        belge.write_text("ikincibenzersiz", encoding="utf-8")
+        deadline = time.time() + 3
+        while time.time() < deadline and not kb.search("ikincibenzersiz"):
+            time.sleep(0.03)
+        assert kb.search("ikincibenzersiz")
+
+        belge.unlink()
+        deadline = time.time() + 3
+        while time.time() < deadline and kb.search("ikincibenzersiz"):
+            time.sleep(0.03)
+        assert kb.search("ikincibenzersiz") == []
+    finally:
+        srv.shutdown()
 
 
 def test_the_diagnostic_tab_counts_real_cases():
@@ -576,6 +748,39 @@ def test_the_diagnostic_tab_counts_real_cases():
     teshis = PanelServer(agent, host="127.0.0.1", port=0).modul_verisi()["teshis"]
     assert teshis["durum"] == "hazir"
     assert "1 açık vaka" in teshis["ozet"]
+    assert {p["id"] for p in teshis["playbooklar"]} >= {"guc-yok", "goruntu-yok"}
+
+
+def test_guided_diagnostic_api_updates_the_case(server):
+    case = server.agent.cases.open_case("Deniz", "Masaüstü", "güç yok")
+    status, started = _post(server, "/teshis/baslat", {
+        "vaka_no": case.id, "playbook": "guc-yok"})
+    assert status == 200 and started["durum"] == "aktif"
+    status, done = _post(server, "/teshis/yanit", {
+        "oturum_no": started["oturum_no"], "secenek": "hayir"})
+    assert status == 200 and done["durum"] == "tamamlandi"
+    notes = server.agent.cases.notes_for(case.id)
+    assert notes[-1].kind == "sonuc" and done["sonuc"] in notes[-1].text
+
+
+def test_guided_diagnostic_rejects_unknown_case_and_option(server):
+    with pytest.raises(urllib.error.HTTPError) as missing:
+        _post(server, "/teshis/baslat", {"vaka_no": 999, "playbook": "guc-yok"})
+    assert missing.value.code == 400
+    case = server.agent.cases.open_case("Deniz", "Laptop", "görüntü yok")
+    _, started = _post(server, "/teshis/baslat", {
+        "vaka_no": case.id, "playbook": "goruntu-yok"})
+    with pytest.raises(urllib.error.HTTPError) as invalid:
+        _post(server, "/teshis/yanit", {
+            "oturum_no": started["oturum_no"], "secenek": "uydurma"})
+    assert invalid.value.code == 400
+
+
+def test_panel_contains_guided_diagnostic_controls(server):
+    _, html = _get(server, "/")
+    assert 'arac.id="teshisForm"' in html
+    assert 'fetch("/teshis/baslat"' in html
+    assert 'fetch("/teshis/yanit"' in html
 
 
 def test_a_broken_store_costs_its_own_tab_not_the_panel(server):
@@ -887,6 +1092,26 @@ def test_the_icon_does_not_need_a_token(token_server):
         f"http://127.0.0.1:{token_server.port}/favicon.ico", timeout=5
     ) as r:
         assert r.status == 200
+
+
+def test_mobile_manifest_is_public_and_never_contains_the_token(token_server):
+    """The browser fetches install metadata before it can prove panel access."""
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{token_server.port}/manifest.webmanifest", timeout=5
+    ) as r:
+        body = r.read().decode("utf-8")
+        manifest = json.loads(body)
+    assert r.headers["Content-Type"].startswith("application/manifest+json")
+    assert manifest["display"] == "standalone"
+    assert manifest["start_url"] == "/"
+    assert token_server.token not in body
+
+
+def test_panel_links_mobile_install_metadata():
+    from jarvis.web.server import PANEL_HTML
+    html = PANEL_HTML.read_text(encoding="utf-8")
+    assert 'rel="manifest" href="/manifest.webmanifest"' in html
+    assert 'rel="apple-touch-icon"' in html
 
 
 def test_the_panel_points_at_that_icon():

@@ -11,10 +11,8 @@
 
 ## Yeni sürümü nereden indiririm?
 
-**[INDIRME.md](../INDIRME.md)** — tıklanabilir adres ve adım adım kurulum.
-
-Kısaca: GitHub'da dalı seçip **Code → Download ZIP**, inen dosyayı
-ayıklayın, bu klasördeki `Kur.cmd` dosyasına **çift tıklayın**.
+**[INDIRME.md](../INDIRME.md)** — hazır `JARVIS-Setup-2.0.1.exe` indirme
+adresi, SHA-256 doğrulaması ve kaynak kurulum seçeneği.
 
 ---
 

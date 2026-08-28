@@ -12,6 +12,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def configure_utf8_console() -> None:
+    """Windows'un cp1252 CI konsolunda Türkçe durum satırları çökmesin."""
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
+def utf8_environment() -> dict[str, str]:
+    """Alt Python süreçlerine de UTF-8 taşı; stdout ayarı miras alınmaz."""
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
 def run(label: str, command: list[str], env: dict[str, str]) -> None:
     print(f"[TEST] {label}")
     result = subprocess.run(command, cwd=ROOT, env=env, text=True)
@@ -21,7 +36,8 @@ def run(label: str, command: list[str], env: dict[str, str]) -> None:
 
 
 def main() -> int:
-    base_env = os.environ.copy()
+    configure_utf8_console()
+    base_env = utf8_environment()
     with tempfile.TemporaryDirectory(prefix="jarvis-windows-acceptance-") as data:
         env = base_env.copy()
         env.update({
@@ -47,9 +63,12 @@ def main() -> int:
             # özel kapatma bayraklarını onlara sızdırma.
             test_env = base_env.copy()
             test_env["JARVIS_DATA_DIR"] = data
-            run("Çekirdek regresyon testleri", [sys.executable, "-m", "pytest", "-q",
-                "--ignore=tests/test_web.py"], test_env)
-    print("KABUL TAMAM — mikrofon, kamera, Ollama/GPU ve ses gerçek sistemde ayrıca sınanmalı.")
+            # Panel rotaları da ürünün parçası: yerel HTTP soketi açabilen gerçek
+            # Windows kabul ortamında bunları atlamak bozuk bir kurucuyu geçirirdi.
+            run("Tam regresyon testleri", [sys.executable, "-m", "pytest", "-q"],
+                test_env)
+    print("ÇEKİRDEK KABUL TAMAM")
+    print("Gerçek sistem raporu için: jarvis-kabul")
     return 0
 
 

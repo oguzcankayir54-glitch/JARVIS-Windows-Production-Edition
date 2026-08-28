@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..maintenance.logs import rotate_if_needed
+
 
 _SECRET_KEYS = ("password", "parola", "api_key", "apikey", "token", "secret")
 _SECRET_TEXT = (
@@ -57,8 +59,11 @@ class AuditLog:
     """Writes :class:`AuditEntry` records to a JSONL file (and stays usable
     in-memory even if the path is unwritable)."""
 
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, *, max_bytes: int = 10 * 1024 * 1024,
+                 backup_count: int = 5) -> None:
         self.path = path
+        self.max_bytes = max(0, int(max_bytes))
+        self.backup_count = max(0, int(backup_count))
         self.entries: list[AuditEntry] = []
         if self.path is not None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,8 +72,12 @@ class AuditLog:
         self.entries.append(entry)
         if self.path is not None:
             try:
+                line = entry.to_json() + "\n"
+                rotate_if_needed(self.path, len(line.encode("utf-8")),
+                                 max_bytes=self.max_bytes,
+                                 backup_count=self.backup_count)
                 with self.path.open("a", encoding="utf-8") as fh:
-                    fh.write(entry.to_json() + "\n")
+                    fh.write(line)
             except OSError:
                 # Never let a logging failure crash a tool call; keep the
                 # in-memory copy so the session still has the trail.

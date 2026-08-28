@@ -107,17 +107,24 @@ sınırlamak, dolayısıyla önce içeri alıp sonra bakmak anlamsız olurdu.
 
 ---
 
-## Şu an ne yapmıyor
+## İsteğe bağlı gelişmiş analiz
 
-Bunlar sırayla gelecek; bugün **yok** ve panel de yok diyor:
+Temel yüz konumu dışında üç yerel sağlayıcı vardır ve gizlilik nedeniyle
+varsayılan olarak kapalıdır:
 
-- **Yüz tanıma** — kimin yüzü olduğunu bilmiyor, yalnızca yüz olduğunu biliyor
-- **Karşılama** — sizi görünce kendiliğinden konuşmuyor
-- **Nesne tanıma** — kameraya tuttuğunuz anakartı, RAM'i, ekran kartını
-  ayırt etmiyor
+- **Nesne algılama** — YOLO ile bilinen nesne sınıflarını, güven puanını ve
+  kare içindeki konumunu döndürür. `pip install -e ".[gorsel]"` ardından
+  `JARVIS_OBJECT_VISION_ENABLED=true` ile açılır. Model ağırlığı ilk kullanımda
+  indirilebilir.
+- **OCR** — Tesseract ile karedeki metni okur. Aynı `gorsel` eki ve
+  `JARVIS_OCR_ENABLED=true` gerekir; Windows'ta Tesseract uygulamasının ve
+  kullanılacak dil paketinin ayrıca kurulu olması gerekir.
+- **Yüz kimliği** — yalnızca açık kullanıcı kaydıyla oluşturulan yerel yüz
+  embedding'lerini karşılaştırır. Ham fotoğraf saklanmaz. `pip install -e
+  ".[yuz]"` ve `JARVIS_FACE_RECOGNITION_ENABLED=true` ile açılır.
 
-Aşama 1 bilinçli olarak dar: kamera yolu (tarayıcı → sunucu → ölçüm → panel)
-uçtan uca çalışmadan tanımanın üstüne bir şey konmaz.
+Bu sağlayıcıların hiçbiri kamerayı kendiliğinden açmaz. Proaktif karşılama da
+henüz yoktur; bir yüzün görülmesi kendi başına asistan turu başlatamaz.
 
 ---
 
@@ -126,6 +133,9 @@ uçtan uca çalışmadan tanımanın üstüne bir şey konmaz.
 | Anahtar | Varsayılan | Ne işe yarar |
 |---------|------------|--------------|
 | `JARVIS_VISION_ENABLED` | `false` | Kamerayı açar |
+| `JARVIS_OBJECT_VISION_ENABLED` | `false` | YOLO nesne algılamayı açar |
+| `JARVIS_OCR_ENABLED` | `false` | Görüntüden metin okumayı açar |
+| `JARVIS_FACE_RECOGNITION_ENABLED` | `false` | İzinli yerel yüz kimliğini açar |
 
 Tek seferlik açmak için: `jarvis-panel --kamera`
 

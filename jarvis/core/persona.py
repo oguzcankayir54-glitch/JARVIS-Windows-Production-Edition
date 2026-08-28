@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from .assistant_rules import ASSISTANT_RULES_PROMPT
 from .asistan import Asistan, asistan_bul
+from .command_guide import command_guide_prompt
 from .core_identity import core_identity_prompt
 from .owner import Owner
 from .personality import PERSONALITY_PROMPT
@@ -59,7 +60,7 @@ def build_system_prompt(owner: Owner | None = None, machine: str = "",
     identity or silently rewrite the protected owner record.
     """
     a = asistan or asistan_bul()
-    parts = [temel_istem(a), STARK_DINAMIK_KURALLARI]
+    parts = [temel_istem(a), STARK_DINAMIK_KURALLARI, command_guide_prompt()]
 
     if owner is not None and owner.configured:
         parts.append("Kullanıcı hakkında — KORUNAN OWNER KİMLİĞİ:\n" + owner.to_prompt(a))

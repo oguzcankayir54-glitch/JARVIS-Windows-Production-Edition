@@ -6,6 +6,7 @@ not a stand-in for a real model's quality — it is a stand-in for its
 rankings that disagree, arriving in a defined order, fused into one.
 """
 import math
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -48,7 +49,10 @@ class _TorbaEmbedder:
         for metin in texts:
             vec = [0.0] * self.dim
             for kelime in kelimeler(metin):
-                vec[hash(kelime) % self.dim] += 1.0
+                # Python hash'i her süreçte farklı tuzlanır; test sıralaması
+                # işletim sistemi veya PYTHONHASHSEED'e bağlı olmamalı.
+                bucket = int.from_bytes(hashlib.sha256(kelime.encode("utf-8")).digest()[:8], "big")
+                vec[bucket % self.dim] += 1.0
             cikti.append(normalize(vec))
         return cikti
 
@@ -230,6 +234,62 @@ def test_reindexing_unchanged_text_does_no_work(kb):
     sonuc = kb.index_text("ses.py", KOD)
     assert sonuc.durum == "degismedi"
     assert kb.embedder.cagri == once, "değişmeyen belge yeniden gömülmemeli"
+
+
+def test_sync_updates_changed_files_and_forgets_deleted_ones(kb, tmp_path):
+    kalan = tmp_path / "kalan.md"
+    silinen = tmp_path / "silinen.md"
+    kalan.write_text("# İlk\n\neski içerik\n", encoding="utf-8")
+    silinen.write_text("# Sil\n\nbenzersizsilinen\n", encoding="utf-8")
+    ilk = kb.index_path(tmp_path, silinenleri_unut=True)
+    assert ilk.eklenen == 2 and ilk.silinen == 0
+
+    kalan.write_text("# Son\n\nyeni içerik\n", encoding="utf-8")
+    silinen.unlink()
+    ikinci = kb.index_path(tmp_path, silinenleri_unut=True)
+
+    assert ikinci.guncellenen == 1 and ikinci.silinen == 1
+    # Anlamsal arama ilgisiz bir belgeyi düşük puanla yine de döndürebilir;
+    # asıl sözleşme silinen kaynağın indekste artık bulunmamasıdır.
+    assert all(hit.yol != str(silinen) for hit in kb.search("benzersizsilinen"))
+    assert kb.search("yeni içerik")
+
+
+def test_sync_never_keeps_a_file_that_became_secret(kb, tmp_path):
+    belge = tmp_path / "not.md"
+    belge.write_text("güvenli benzersizmetin", encoding="utf-8")
+    kb.index_path(tmp_path, silinenleri_unut=True)
+    belge.rename(tmp_path / "credentials.json")
+
+    rapor = kb.index_path(tmp_path, silinenleri_unut=True)
+
+    assert rapor.silinen == 1
+    assert kb.search("benzersizmetin") == []
+
+
+def test_sync_forgets_a_configured_file_after_it_is_deleted(kb, tmp_path):
+    belge = tmp_path / "tek.md"
+    belge.write_text("teksilinenbenzersiz", encoding="utf-8")
+    kb.index_path(belge, silinenleri_unut=True)
+    belge.unlink()
+
+    rapor = kb.index_path(belge, silinenleri_unut=True)
+
+    assert rapor.silinen == 1
+    assert kb.search("teksilinenbenzersiz") == []
+
+
+def test_sync_does_not_follow_symlinks_outside_the_allowed_root(kb, tmp_path):
+    dis = tmp_path / "dis.md"
+    dis.write_text("disaridakibenzersiz", encoding="utf-8")
+    kok = tmp_path / "kok"
+    kok.mkdir()
+    (kok / "masum.md").symlink_to(dis)
+
+    rapor = kb.index_path(kok, silinenleri_unut=True)
+
+    assert rapor.sebepler["bağlantı"] == 1
+    assert kb.search("disaridakibenzersiz") == []
 
 
 def test_changed_text_replaces_the_old_chunks(kb):

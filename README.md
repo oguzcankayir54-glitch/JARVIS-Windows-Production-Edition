@@ -1,175 +1,318 @@
-# J.A.R.V.I.S.
+# J.A.R.V.I.S. — Windows Production Edition
 
-Kişisel, modüler bir yapay zekâ teknisyen asistanı. Sesli iletişim, görsel
-analiz, donanım/sistem teşhisi, hafıza ve araç (tool) kullanımı hedeflenen; şu
-an **V1 metin çekirdeği** çalışır durumda olan bir proje.
+J.A.R.V.I.S.; Türkçe konuşan, yerel yapay zekâ modeliyle çalışabilen, sesli
+iletişim, kalıcı hafıza, teknik servis vaka kaydı, sistem araçları, bilgi tabanı
+ve canlı Neural Core panelini tek uygulamada birleştiren kişisel teknisyen
+asistanıdır.
 
-> **Durum:** V1 çekirdeği (Faz 0 + Faz 1). Ses, vision ve Neural Core paneli
-> sonraki fazlarda. Mimari ve gereksinim analizi için `docs/` klasörüne bakın.
+Projenin ana hedefi **saf Windows kurulumu**dur. Python, Ollama ve J.A.R.V.I.S.
+doğrudan Windows üzerinde çalışır; WSL zorunlu değildir. Linux desteği geliştirme,
+test ve alternatif kurulum amacıyla korunmaktadır.
 
-## Ne var (V1 çekirdeği)
+> **Sürüm:** 2.0.1
+>
+> **Durum:** Çekirdek, panel, hafıza, RAG, ses, mikrofon ve güvenli araç katmanı
+> çalışıyor. Gerçek donanım kabul testleri ve üretim kurulum sertleştirmesi devam
+> ediyor.
 
-- **Core state machine** — `HAZIR / DİNLİYOR / DÜŞÜNÜYOR / KONUŞUYOR / …`
-  durumları (Neural Core paneliyle birebir; panel sonra bu makineye bağlanacak).
-- **Güvenli araç katmanı** — `LLM → Agent → Tool Manager → Permission Layer → OS`.
-  Her araç bir risk seviyesi taşır (`LOW/MEDIUM/HIGH/CRITICAL`); HIGH/CRITICAL
-  işlemler açık kullanıcı onayı ister, her çağrı denetim günlüğüne (audit log)
-  yazılır.
-- **Host sistem araçları** (LOW risk, salt-okunur) — CPU/GPU sıcaklık, RAM,
-  disk/SMART, sistem özeti. Sensör/GPU yoksa zarifçe "mevcut değil" döner.
-- **Hafıza (SQLite)** — konuşma otomatik kaydedilir; kalıcı bilgiler yalnızca
-  açık `remember_fact` çağrısıyla yazılır. Bilinen bilgiler her turda bağlama
-  eklenir.
-- **Servis defteri** — serviste gelen cihaz bir *vaka* olarak kaydedilir:
-  müşteri, cihaz, belirti, denenenler, sonuç. Vaka boş belirtiyle açılamaz ve
-  sonuç yazılmadan kapatılamaz — sonradan aranamayan bir kayıt hiç kayıt
-  tutmamaktan kötüdür. Kapanan vakalar silinmez, arşivlenir.
-- **Geçmiş vaka arama** — `vaka_ara` benzer belirtiyi geçmişte arar ve **ne
-  çıktığını** getirir. Türkçe katlama var: `IŞIK`, `ışık`, `isik` ve
-  `goruntu yok` ↔ `görüntü yok` birbirini bulur. Açık vakalar ayrıca her turda
-  bağlama girer — sorulmadan neyin tezgâhta olduğunu bilir.
-- **Kimlik katmanı** — `jarvis-tanit` ile sahibini tanır (ad, hitap, rol,
-  meslek, cevap tercihi) ve üzerinde çalıştığı makineyi bilir. Kimlik yerel
-  veritabanında tutulur, koda yazılmaz; `forget_fact` ile silinemez.
-- **Terminal aracı** — allowlist'li, **kabuk kullanmadan** (komut zincirleme ve
-  `sudo` yok). Risk komuta göre belirlenir: okuma MEDIUM, sistem değişikliği
-  HIGH, yıkıcı işlem CRITICAL. Listede olmayan komut hiç çalışmaz.
-- **Dosya araçları** — oku/yaz/listele. Sır dosyaları (`id_rsa`, `.env`, `.ssh/`
-  …) tamamen erişim dışı; sistem dizinine yazmak onay ister.
-- **Ses (ElevenLabs-first)** — J.A.R.V.I.S. 2.0.1'in ana TTS motoru ElevenLabs.
-  Canlı konuşma için `eleven_flash_v2_5`, yüksek ifade için `eleven_v3`;
-  Piper ve Edge yalnızca isteğe bağlı yedek sağlayıcıdır. **ElevenLabs** daha doğal
-  ama karakter başına ücretli — uzun bir cevap para kararına dönüşüyor.
-  Kurulu olmayan bir sağlayıcı "hazır" demez; eksik neyse açılışta söyler.
-  Anahtar yalnızca `.env` içinde. `jarvis-ses --kontrol` · `docs/SES.md`.
-- **Mikrofon (faster-whisper STT)** — panelde 🎙 düğmesi. Kayıt **bu makinede**
-  çözümlenir, buluta gitmez. Duyulan metin doğrudan çalıştırılmaz, yazı
-  kutusuna düşer — yanlış duyulmuş bir cümle görülmeden komut olmasın diye.
-  İsteğe bağlı bağımlılık: yoksa yalnızca mikrofon kapalı olur.
-  Ayrıntı: `docs/MIKROFON.md`.
-- **Kamera (yerel görüntü analizi)** — panelde **Vision** sekmesi. Kare **bu
-  makinede** ölçülür, ne diske yazılır ne dışarı çıkar: geriye yalnızca kaç
-  yüz ve nerede bilgisi kalır. Varsayılan **kapalı** — bir tezgâh kamerası
-  müşteriyi de görür, açmak bilinçli bir hareket olmalı: `jarvis-panel
-  --kamera`. Aşama 1 yalnızca hedef takibi; tanıma ve nesne ayırt etme sırada.
-  Ayrıntı: `docs/KAMERA.md`.
-- **Bilgi tabanı (RAG)** — `jarvis-bilgi ekle ~/proje` ile kodunuzu, notlarınızı
-  ve dokümanlarınızı aranabilir yapar. Hafızadan **ayrı bir katman**: hafıza
-  sizinle ilgili olanı her turda *iter*, bilgi tabanı belgeleri sorulduğunda
-  *çeker*. Arama hibrit — anlam (yerel gömme) + kelime (BM25), RRF ile
-  birleştirilir; tam tanımlayıcılar (`libcublas.so.12`) ile kavramsal sorular
-  ("nasıl bağlamıştık") farklı yarılarda yakalanır. Sonuçlar `dosya:satır`
-  olarak gelir. Gizli dosyalar (`.env`, anahtarlar) indekslenmez — dosya
-  araçlarıyla **aynı** kara liste. Ayrıntı: `docs/BILGI-TABANI.md`.
-- **Uygulama açma** — "YouTube aç", "hesap makinesi aç", "ayarları aç".
-  Ad Türkçe söylendiği gibi verilir; eşleştirme katlamalı ve affedici
-  ("hesap makinası", "gorev yoneticisi" da bulur). **Katalog bir beyaz
-  liste**: eline verilen bir yolu çalıştırmaz, çünkü o zaman terminal
-  aracının allowlist'i nazikçe rica ederek atlanabilirdi — ve rica bir web
-  sayfasından gelebilir. Eksik olanı sahibi `~/.jarvis/uygulamalar.json`
-  içine ekler.
-- **Model karşılaştırma** — `jarvis-karsilastir` iki yerel modele aynı soruları
-  sorar ve **kör** bir karşılaştırma sayfası üretir (model adları ve süreler
-  ayrı dosyada). Donanım kararını tahminle değil ölçümle vermek için:
-  `docs/MODEL-KARSILASTIRMA.md`.
-- **Provider-agnostik LLM** — `mock` (modelsiz, test için) ve `ollama` (yerel).
-  İleride bulut model + router aynı arabirime eklenecek.
-- **Terminal agent** — `python -m jarvis` ile çalışan REPL.
-- **Windows başlatıcı** — masaüstündeki simgeye çift tıkla, panel açılsın.
-  Kurulum WSL kabuğundan: `./windows/kur.sh` (veya Windows'tan `Kur.cmd`).
-  WSL'i ve proje klasörünü kendisi bulur; panelin gerçekten
-  hazır olduğunu `/health` cevabından anlar — port açık olduğu hâlde ölü bir
-  `portproxy`'ye tarayıcı açmasın diye. Ayrıntı: `windows/BENIOKU.md`.
-- **Canlı panel** — `jarvis-panel` ile Neural Core arayüzü gerçek duruma ve
-  telemetriye bağlanır (SSE, ek bağımlılık yok). ElevenLabs ayarlıysa cevapları
-  **tarayıcıda sesli okur**. Olmayan modüller için uydurma veri göstermez:
-  yoksa "yok" yazar.
+## Öne çıkan özellikler
 
-Teşhis/telemetri hedefi V1'de **çalıştığı makinedir (host)** — karar D1,
-bkz. `docs/REQUIREMENTS_ANALYSIS.md`.
+### Yapay zekâ çekirdeği
 
-## Kurulum
+- Ollama üzerinden tamamen yerel LLM çalıştırma
+- Varsayılan model: `qwen2.5:14b-instruct`
+- Daha küçük modele otomatik fallback desteği
+- Bağlam yönetimi, niyet yönlendirme ve kontrollü araç seçimi
+- Model veya servis hatasında güvenli biçimde `STANDBY` durumuna dönüş
+- Testler için internet ve model gerektirmeyen `mock` sağlayıcı
+
+### Neural Core paneli
+
+- Tarayıcı tabanlı canlı kontrol paneli
+- `HAZIR`, `DİNLİYOR`, `DÜŞÜNÜYOR`, `ANALİZ EDİYOR` ve `KONUŞUYOR` durumları
+- SSE üzerinden canlı durum ve telemetri güncellemeleri
+- Metin sohbeti, mikrofon, seslendirme ve Vision bölümleri
+- CPU, RAM, disk, GPU ve sistem bilgilerinin gerçek zamanlı gösterimi
+- Windows masaüstü başlatıcısı ve tek örnek çalışma kontrolü
+- Yerel kullanımda `127.0.0.1`; ağ erişiminde zorunlu erişim jetonu
+
+### Türkçe ses ve mikrofon
+
+- **ElevenLabs:** doğal bulut sesi; `eleven_flash_v2_5` ve `eleven_v3`
+- **Edge TTS:** ücretsiz çevrimiçi Türkçe ses
+- **Piper:** tamamen yerel ve çevrimdışı yedek ses
+- **faster-whisper:** yerel Türkçe konuşma tanıma
+- Teknik terimler, model numaraları ve özel adlar için hotword desteği
+- Yazılı mikrofon kipinde transkript önce kutuya gelir; kullanıcı görmeden komut olarak çalıştırılmaz
+- Eller serbest kipte yüksek riskli işlemler otomatik reddedilir
+
+### Hafıza ve teknik servis kayıtları
+
+- SQLite tabanlı konuşma geçmişi
+- Açıkça kaydedilen kalıcı kullanıcı bilgileri
+- Kaynak, güven ve önem puanına göre hafıza seçimi
+- Eski değerleri kaybetmeyen değişiklik geçmişi
+- Müşteri, cihaz, belirti, uygulanan işlemler ve sonuç içeren servis vakaları
+- Türkçe karakterlerden etkilenmeyen geçmiş vaka araması
+- Sonuç yazılmadan vaka kapatılmasını engelleyen veri bütünlüğü kuralları
+
+### Bilgi tabanı — RAG
+
+- Kod, teknik doküman ve notları yerel olarak indeksleme
+- Kelime araması ile anlamsal aramayı birleştiren hibrit retrieval
+- Ollama üzerinde yerel `bge-m3` embedding desteği
+- Sonuçlarda dosya ve satır bilgisi
+- `.env`, özel anahtarlar ve diğer gizli dosyaları indekslemeyen güvenlik filtresi
+- Embedding kullanılamazsa kelime aramasına kontrollü fallback
+
+### Görsel analiz
+
+- Yerel kamera karesi işleme
+- Yüz konumu ve hedef takibi
+- İsteğe bağlı YOLO nesne algılama
+- İsteğe bağlı OCR
+- Açıkça etkinleştirilen yüz kimliği desteği
+- Ham kamera karelerini kalıcı olarak saklamayan tasarım
+
+### Güvenli araç kullanımı
+
+J.A.R.V.I.S. işletim sistemine doğrudan sınırsız erişmez:
+
+```text
+Kullanıcı → Agent → Tool Router → Permission Manager → İşletim sistemi
+```
+
+- Araçlar `LOW`, `MEDIUM`, `HIGH` ve `CRITICAL` risk seviyelerine ayrılır
+- Allowlist dışındaki terminal komutları reddedilir
+- Kabuk zincirleme, serbest `sudo` ve kontrolsüz komut çalıştırma yoktur
+- `.env`, `.ssh`, özel anahtarlar ve parola dosyaları erişim dışıdır
+- Riskli işlemler açık kullanıcı onayı ister
+- Risk sınıflandırması hata verirse işlem güvenli tarafta kalır
+- Araç kararları redakte edilmiş JSONL denetim günlüğüne yazılır
+- Web ve RAG içeriği talimat değil, güvenilmeyen veri olarak değerlendirilir
+
+## Windows kurulumu
+
+### Gereksinimler
+
+- Windows 10 veya Windows 11, 64-bit
+- Python 3.10 veya üzeri; önerilen sürüm Python 3.12
+- Gerçek yerel yapay zekâ için Ollama
+- Mikrofon ve kamera özellikleri için uyumlu donanım
+- ElevenLabs kullanılacaksa API anahtarı ve Voice ID
+
+Python kurulumu:
+
+```powershell
+winget install Python.Python.3.12
+```
+
+Ollama kurulumu ve modeller:
+
+```powershell
+winget install Ollama.Ollama
+ollama pull qwen2.5:14b-instruct
+ollama pull qwen2.5:7b-instruct
+ollama pull bge-m3
+```
+
+### Kurulum adımları
+
+1. [JARVIS-Setup-2.0.1.exe](https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition/releases/download/v2.0.1-production.9/JARVIS-Setup-2.0.1.exe) dosyasını indirin.
+2. Dosyaya çift tıklayıp kurulum sihirbazını tamamlayın.
+3. Kaynak kurulum seçeneği için `INDIRME.md` belgesine bakın.
+4. Kurucu projeyi `%LOCALAPPDATA%\Programs\JARVIS` altına kurar.
+5. Masaüstündeki **J.A.R.V.I.S.** simgesinden paneli başlatın.
+
+Kurucu:
+
+- Kendi Python sanal ortamını oluşturur
+- Temel paketi, Edge TTS'yi ve faster-whisper'ı kurmayı dener
+- Masaüstü ve Başlat menüsü kısayollarını oluşturur
+- J.A.R.V.I.S. paketinin gerçekten açılabildiğini doğrular
+- Kullanıcı hafızasını `%USERPROFILE%\.jarvis` altında ayrı tutar
+
+Ayrıntılı anlatım: [Windows kurulum rehberi](docs/KURULUM-WINDOWS.md)
+
+## Yapılandırma
+
+Yerel ayarlar uygulama klasöründeki `.env` dosyasından okunur. API anahtarlarını
+depoya, README'ye veya destek mesajlarına yazmayın.
+
+Örnek üretim ayarları:
+
+```env
+JARVIS_PROFILE=windows-production
+JARVIS_DATA_DIR=~/.jarvis
+
+JARVIS_LLM_PROVIDER=ollama
+JARVIS_OLLAMA_HOST=http://localhost:11434
+JARVIS_OLLAMA_MODEL=qwen2.5:14b-instruct
+JARVIS_OLLAMA_FALLBACK_MODEL=qwen2.5:7b-instruct
+JARVIS_OLLAMA_NUM_CTX=8192
+
+JARVIS_VOICE_ENABLED=true
+JARVIS_TTS_PROVIDER=elevenlabs
+ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=
+
+JARVIS_STT_ENABLED=true
+JARVIS_STT_MODEL=small
+
+JARVIS_VISION_ENABLED=false
+JARVIS_OBJECT_VISION_ENABLED=false
+JARVIS_OCR_ENABLED=false
+JARVIS_FACE_RECOGNITION_ENABLED=false
+```
+
+Hazır şablon: [`profiles/windows-production.env.example`](profiles/windows-production.env.example)
+
+## Kullanım
+
+Masaüstü simgesi önerilen kullanım yoludur. Terminalden çalıştırmak için:
+
+```powershell
+jarvis-panel
+```
+
+Metin tabanlı terminal arayüzü:
+
+```powershell
+jarvis
+```
+
+Kimlik tanıtma:
+
+```powershell
+jarvis-tanit --kur
+```
+
+Bilgi tabanına belge veya proje ekleme:
+
+```powershell
+jarvis-bilgi ekle C:\Belgeler\Teknik-Notlar
+jarvis-bilgi ara "NVMe görünmüyorsa neyi kontrol etmeliyim?"
+```
+
+Ses yapılandırmasını kontrol etme:
+
+```powershell
+jarvis-ses --kontrol
+```
+
+## Geliştirme ve test
+
+Linux veya Windows geliştirme ortamında:
 
 ```bash
-pip install -e .            # veya: pip install psutil
-cp .env.example .env        # ayarları düzenleyin (gizli anahtarlar .env'de kalır)
-```
-
-## Çalıştırma
-
-```bash
-python -m jarvis
-```
-
-Örnek:
-
-```
-sen › cpu sıcaklığı kaç?
-   · durum: DÜŞÜNÜYOR
-   · durum: ANALİZ EDİYOR
-JARVIS › [get_cpu_temperature] sonucu: {...}
-```
-
-Yerel model ile (Ollama kurulu ve model indirilmişse):
-
-```bash
-JARVIS_LLM_PROVIDER=ollama JARVIS_OLLAMA_MODEL=qwen2.5:14b-instruct python -m jarvis
-```
-
-## Test
-
-```bash
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 pytest -q
 ```
 
+Mevcut doğrulama tabanı:
+
+- 1021 otomatik test
+- Python kaynak derleme kontrolü
+- Windows kurulum ve başlatıcı regresyon testleri
+- Paket/ZIP içinde sır bulunmadığını doğrulayan testler
+- Panel, erişim jetonu, SSE, ses, mikrofon ve Vision API testleri
+
+Donanıma bağlı mikrofon, kamera, GPU, Ollama ve ses sağlayıcıları gerçek hedef
+sistemde ayrıca kabul testinden geçirilmelidir.
+
 ## Proje yapısı
 
-```
+```text
 jarvis/
-  config.py            # ayarlar (.env / env vars)
-  bootstrap.py         # bileşenleri birleştirir
-  core/                # state machine, agent loop, persona
-  memory/              # SQLite hafıza deposu (konuşma + kalıcı bilgiler)
-  security/            # permission layer + audit log
-  tools/               # tool base + manager + sistem/hafıza/terminal/dosya araçları
-  llm/                 # LLM soyutlaması: mock / ollama
-  voice/               # ElevenLabs TTS + ses doğrulama komutu
-  web/                 # canlı panel sunucusu (HTTP + SSE)
-tests/                 # permission, tool, agent testleri
-docs/                  # mimari analiz, gereksinim denetimi, PDF, UI mockup
+├── core/       Agent, durum makinesi, kişilik, niyet ve bağlam
+├── llm/        Ollama, mock ve fallback sağlayıcıları
+├── memory/     Hafıza ve servis vakaları
+├── rag/        Belge indeksleme ve hibrit arama
+├── security/   İzin yöneticisi ve audit kayıtları
+├── tools/      Sistem, dosya, terminal, Git, hafıza ve uygulama araçları
+├── voice/      ElevenLabs, Edge, Piper ve faster-whisper
+├── vision/     Yüz, nesne, OCR ve kimlik analizi
+├── internet/   Güvenli arama, sayfa getirme ve SSRF koruması
+└── web/        Neural Core panel sunucusu ve SSE
+
+windows/        Windows başlatıcısı ve kurulum kaynakları
+profiles/       Lite, Windows geliştirme ve üretim ayar şablonları
+scripts/        Paketleme, profil ve kabul testi araçları
+tests/          Otomatik regresyon testleri
+docs/           Mimari, donanım ve kullanım belgeleri
 ```
 
-## Güvenlik ilkesi
+## Veri ve gizlilik
 
-LLM işletim sistemine doğrudan erişmez. Her işlem Tool Manager ve Permission
-Layer'dan geçer; bir dokümandan ya da web'den gelen "şunu çalıştır" isteği bile
-aynı risk kapısına takılır (prompt-injection savunması). KRİTİK işlemler tek
-başına sesle değil, açık bir doğrulama ile onaylanır.
+- API anahtarları yalnızca yerel `.env` dosyasında tutulmalıdır
+- Hafıza, vakalar, bilgi tabanı ve loglar varsayılan olarak `~/.jarvis` içindedir
+- Mikrofon çözümlemesi faster-whisper ile yerel yapılır
+- Kamera kareleri analizden sonra saklanmaz
+- Ollama ve embedding modelleri yerelde çalışır
+- ElevenLabs ve Edge seçilirse seslendirilecek metin ilgili çevrimiçi hizmete gider
+- Müşteri veya servis verilerini buluta göndermeden önce veri politikanızı belirleyin
 
-İki kademeli koruma vardır:
+## Mevcut sınırlamalar
 
-1. **Politika reddi (mutlak)** — allowlist dışı komutlar ve sır dosyaları
-   *onaya hiç sunulmaz*. Kullanıcı onaylasa bile çalışmazlar; yoksa allowlist
-   bir onayla baypas edilebilirdi.
-2. **İzin kapısı (onaylanabilir)** — meşru ama riskli işlemler (`systemctl`,
-   sistem dizinine yazma) kullanıcı onayına sunulur.
+- İlk üretim kurulumu ve donanım kabul testleri hedef Windows sisteminde yapılmalıdır
+- Hazır Setup EXE GitHub Releases üzerinden yayınlanmaktadır; paket henüz kod imzalı değildir
+- iPhone istemcisi ve telefon mikrofonu için HTTPS akışı tamamlanmamıştır
+- Ayrı müşteri bilgisayarına bağlanan uzak teşhis ajanı henüz yoktur
+- Yönlendirmeli teşhis playbook'ları hazırdır; kart düzeyi özel playbook kapsamı genişletilmektedir
+- Watchdog, doğrulanmış yedekleme/geri yükleme ve log rotation hazırdır
+- Windows SmartScreen için kod imzalama yapılmamıştır
 
-Risk çağrı bazında hesaplanır ve **asla beyan edilen seviyenin altına inemez**;
-sınıflandırıcı hata verirse işlem CRITICAL sayılır (fail-closed). Her karar tek
-satır olarak `audit.log.jsonl` dosyasına yazılır.
+## Yol haritası
 
-## Yol haritası (özet)
+- ✅ Güvenli çekirdek, durum makinesi ve araç katmanı
+- ✅ Neural Core paneli ve Windows başlatıcısı
+- ✅ SQLite hafıza ve servis vaka sistemi
+- ✅ Hibrit RAG ve yerel embedding
+- ✅ ElevenLabs, Edge, Piper ve faster-whisper entegrasyonları
+- ✅ Yerel kamera, yüz, nesne ve OCR altyapısı
+- ✅ Windows kabul raporu ve panel sağlık görünümü
+- 🔸 Gerçek kamera/mikrofonla fiziksel kabul turu
+- ✅ Vaka bağlantılı teşhis playbook'ları ve karar ağacı
+- ✅ RAG panel yönetimi ve otomatik yeniden indeksleme
+- ✅ Yedekleme, geri yükleme, log rotation ve Windows watchdog
+- 🔸 HTTPS üzerinden telefon/iPhone istemcisi
+- 🔸 Uzak hedef makine teşhis ajanı
+- ✅ Kalıcı ajanda, yaklaşan vaka uyarıları ve Windows yerel bildirimleri
+
+## Belgeler
+
+## Faz durumu
 
 1. ✅ **Faz 0–1** — Core + güvenli araç katmanı + host telemetri + terminal agent
 2. ✅ **Faz 1.5** — Hafıza (SQLite) + terminal/dosya araçları + iki kademeli koruma
 3. ✅ **Faz 2** — Ses: ElevenLabs TTS ✅ · faster-whisper STT ✅ · Canlı panel ✅
    (telefonda mikrofon HTTPS bekliyor — `docs/MIKROFON.md`)
-4. 🔸 **Faz 3** — RAG: hibrit arama (anlam + kelime) ✅ · `jarvis-bilgi` ✅ ·
-   panel sekmesi ve otomatik yeniden indeksleme sırada (`docs/BILGI-TABANI.md`)
-5. 🔸 **Faz 4** — Diagnostic Brain: vaka kaydı ✅ · geçmiş arama ✅ · karar ağacı, playbook sırada
-6. **Faz 5** — iPhone istemci · 🔸 **Faz 6** — Vision: hedef takibi ✅ ·
-   yüz tanıma, karşılama, nesne tanıma sırada (`docs/KAMERA.md`) ·
-   **Faz 7** — Proaktif + Ajanda
+4. ✅ **Faz 3** — RAG: hibrit arama (anlam + kelime) · `jarvis-bilgi` ·
+   panelden kaynaklı arama · seçili klasörleri otomatik eşitleme
+   (`docs/BILGI-TABANI.md`)
+5. ✅ **Faz 4** — Diagnostic Brain: vaka kaydı · geçmiş arama · yönlendirmeli karar ağacı
+6. 🔸 **Faz 5** — iPhone: mobil panel + ana ekrana kurulum ✅ · güvenli uzaktan
+    mikrofon HTTPS gerektirir · ✅ **Faz 6 altyapısı** — Vision: hedef takibi,
+    isteğe bağlı nesne algılama, OCR ve izinli yüz kimliği (`docs/KAMERA.md`) ·
+    proaktif karşılama sırada ·
+    **Faz 7** — Proaktif + Ajanda ✅
+
+## Belgeler
+
+- [Windows kurulumu](docs/KURULUM-WINDOWS.md)
+- [Mimari](docs/ARCHITECTURE.md)
+- [Bilgi tabanı](docs/BILGI-TABANI.md)
+- [Ses sistemi](docs/SES.md)
+- [Mikrofon](docs/MIKROFON.md)
+- [Kamera](docs/KAMERA.md)
+- [Model karşılaştırma](docs/MODEL-KARSILASTIRMA.md)
+- [Gereksinim ve risk analizi](docs/REQUIREMENTS_ANALYSIS.md)
+- [Yedekleme ve watchdog](docs/YEDEKLEME-VE-WATCHDOG.md)
+- [Diagnostic Brain](docs/TESHIS.md)
+- [Ajanda ve yerel bildirimler](docs/AJANDA.md)
+- [Windows kabul testi](docs/WINDOWS-KABUL-TESTI.md)
 
 ## Kurulum yolları
 
@@ -190,3 +333,8 @@ Donanım planlaması:
 | `docs/JARVIS-Donanim-Butce-Raporu.pdf` | 70B analizi ve dört yolun karşılaştırması (arka plan) |
 | `docs/MODEL-KARSILASTIRMA.md` | Kart almadan önce modeli kör olarak sınama |
 
+---
+
+J.A.R.V.I.S. şu anda kişisel kullanım ve kontrollü teknik servis denemeleri için
+geliştirilmektedir. Kritik veya yıkıcı sistem işlemlerinde insan doğrulaması her
+zaman son karar mekanizmasıdır.

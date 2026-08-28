@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="J.A.R.V.I.S.">
 <title>J.A.R.V.I.S. Neural Core</title>
 <link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/favicon.ico">
+<link rel="manifest" href="/manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
@@ -224,7 +226,31 @@
   .mrow .v{font-family:var(--f-mono); font-size:9.5px; color:var(--text);
     margin-left:auto; text-align:right; white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis; max-width:48%}
+  .mrow.komut-row{cursor:pointer; border-radius:3px; padding-left:5px; padding-right:5px}
+  .mrow.komut-row:hover{background:rgba(var(--accent-rgb),.08)}
+  .mrow.komut-row:hover .v{color:var(--accent)}
+  .cmd-tools{display:grid; grid-template-columns:1fr auto auto; gap:5px; padding-bottom:7px;
+    position:sticky; top:0; z-index:2; background:var(--bg-2)}
+  .cmd-tools input,.cmd-tools select{min-width:0; border:1px solid var(--line); border-radius:3px;
+    background:var(--bg-3); color:var(--text); font:9px var(--f-mono); padding:6px}
+  .cmd-tools button,.fav-btn{border:1px solid var(--line); border-radius:3px; background:transparent;
+    color:var(--dim); font:9px var(--f-mono); cursor:pointer; padding:5px 7px}
+  .cmd-tools button:hover,.fav-btn.on{color:var(--accent); border-color:rgba(var(--accent-rgb),.5)}
+  .fav-btn{margin-left:5px; padding:2px 5px}
   .mempty{font-size:10px; color:var(--mute); padding:10px 0; line-height:1.6}
+  .rag-form{display:flex; gap:6px; flex:0 0 auto; margin-bottom:7px}
+  .rag-form input{min-width:0; flex:1; border:1px solid var(--line); border-radius:3px;
+    background:var(--bg-3); color:var(--text); padding:7px 8px; font:10px var(--f-mono)}
+  .rag-form input:focus{outline:none; border-color:rgba(var(--accent-rgb),.6)}
+  .rag-results{flex:1; min-height:0; overflow-y:auto; display:flex;
+    flex-direction:column; gap:6px}
+  .rag-hit{border:1px solid var(--line); border-radius:3px; padding:7px;
+    background:rgba(var(--accent-rgb),.025)}
+  .rag-hit .src{font:9px var(--f-mono); color:var(--accent); overflow-wrap:anywhere}
+  .rag-hit .why{float:right; color:var(--mute); margin-left:6px}
+  .rag-hit .title{font-size:10px; color:var(--text); margin-top:4px}
+  .rag-hit .excerpt{font:9.5px/1.45 var(--f-mono); color:var(--dim); margin-top:4px;
+    white-space:pre-wrap; overflow-wrap:anywhere}
 
   /* diagnostic */
   .case-head{display:flex; align-items:center; gap:8px; margin-bottom:9px}
@@ -410,6 +436,19 @@
             <div class="panel-h"><h2 id="veriBaslik">Modül</h2><span class="tag" id="veriTag">—</span></div>
             <div class="panel-b"><div class="mrows" id="veriGovde"></div></div>
           </div>
+          <div id="bilgiView" hidden>
+            <div class="panel-h"><h2>Bilgi Tabanı</h2><span class="tag" id="bilgiTag">—</span></div>
+            <div class="panel-b">
+              <form class="rag-form" id="bilgiForm">
+                <input id="bilgiSorgu" maxlength="500" autocomplete="off"
+                       placeholder="Belgelerde ve kodda ara…">
+                <button class="sbtn" type="submit" id="bilgiAraBtn">ARA</button>
+              </form>
+              <div class="rag-results" id="bilgiSonuclar">
+                <div class="mempty">Bir ayarı, hata mesajını veya proje kararını arayın.</div>
+              </div>
+            </div>
+          </div>
           <div id="topoView">
           <div class="panel-h"><h2>Donanım Haritası</h2><span class="tag">Harita</span></div>
           <div class="panel-b">
@@ -523,7 +562,7 @@
       <button class="mod active" data-modul="donanim">Donanım</button><button class="mod" data-modul="sistem">Sistem</button>
       <button class="mod" data-modul="goruntu">Görüntü</button><button class="mod" data-modul="ses">Ses</button>
       <button class="mod" data-modul="teshis">Teşhis</button><button class="mod" data-modul="hafiza">Hafıza</button>
-      <button class="mod" data-modul="bilgi">Bilgi</button><button class="mod" data-modul="araclar">Araçlar</button><button class="mod" data-modul="ajanda">Ajanda</button>
+      <button class="mod" data-modul="bilgi">Bilgi</button><button class="mod" data-modul="araclar">Araçlar</button><button class="mod" data-modul="komutlar">Komutlar</button><button class="mod" data-modul="saglik">Sağlık</button><button class="mod" data-modul="kabul">Kabul</button><button class="mod" data-modul="kayitlar">Kayıtlar</button><button class="mod" data-modul="ajanda">Ajanda</button>
     </div>
     <div class="sep"></div>
     <span class="demolbl">◈ Demo Durum</span>
@@ -591,12 +630,25 @@
     ses:     {ad:"Ses"},
     teshis:  {ad:"Teşhis"},
     hafiza:  {ad:"Hafıza"},
-    bilgi:   {ad:"Bilgi Tabanı"},
+    bilgi:   {ad:"Bilgi Tabanı", gorunum:"bilgiView"},
     araclar: {ad:"Araçlar"},
+    komutlar:{ad:"Kolay Komutlar"},
+    saglik:  {ad:"Sağlık Merkezi"},
+    kayitlar:{ad:"İşlem · Hata Kayıtları"},
     ajanda:  {ad:"Ajanda"},
+    kabul:   {ad:"Windows Kabul Testi"},
   };
   let modulVeri = null;      // /moduller cevabı; canlı modda dolar
   let aktifModul = "donanim";
+  const FAVORI_ANAHTAR = "jarvis-komut-favorileri-v1";
+  const GECMIS_ANAHTAR = "jarvis-komut-gecmisi-v1";
+  function yerelListe(anahtar){
+    try{ const v=JSON.parse(localStorage.getItem(anahtar)||"[]"); return Array.isArray(v)?v:[]; }
+    catch(_){ return []; }
+  }
+  function yerelYaz(anahtar, liste){
+    try{ localStorage.setItem(anahtar,JSON.stringify(liste)); }catch(_){}
+  }
 
   // Kutunun boyu, donanım haritasının doğal boyuna sabitlenir. Sebep somut:
   // "Araçlar" 24 satır, "Ajanda" 1 satır — kutu içeriğe göre uzasaydı ızgara
@@ -624,12 +676,13 @@
     if(!tanim) return;
     aktifModul = anahtar;
     // Önce hepsini gizle, sonra ilgiliyi aç: kutu aynı kalır, içerik değişir.
-    ["topoView","visionView","veriView"].forEach(id=>{
+    ["topoView","visionView","veriView","bilgiView"].forEach(id=>{
       const el = document.getElementById(id);
       if(el) el.hidden = true;
     });
     if(tanim.gorunum){
       document.getElementById(tanim.gorunum).hidden = false;
+      if(anahtar === "bilgi") bilgiDurumCiz();
       return;
     }
     const govde = document.getElementById("veriGovde");
@@ -658,16 +711,108 @@
       govde.appendChild(bos);
       return;
     }
-    veri.satirlar.forEach(s=>{
+    let satirlar = veri.satirlar;
+    let filtrele = null;
+    if(anahtar === "teshis" && veri.playbooklar && veri.playbooklar.length){
+      const arac=document.createElement("div"); arac.className="cmd-tools"; arac.id="teshisForm";
+      const vaka=document.createElement("input"); vaka.type="number"; vaka.min="1";
+      vaka.placeholder="Vaka no"; vaka.setAttribute("aria-label","Vaka numarası");
+      const sec=document.createElement("select"); sec.setAttribute("aria-label","Teşhis playbook'u");
+      veri.playbooklar.forEach(p=>{const o=document.createElement("option");o.value=p.id;o.textContent=p.baslik;sec.appendChild(o)});
+      const baslat=document.createElement("button"); baslat.type="button"; baslat.textContent="BAŞLAT";
+      const akis=document.createElement("div"); akis.id="teshisAkis";
+      const ciz=d=>{
+        akis.replaceChildren();
+        const bilgi=document.createElement("div"); bilgi.className="mempty";
+        if(d.durum==="tamamlandi"){
+          bilgi.textContent="SONUÇ · "+d.sonuc; akis.appendChild(bilgi); modulleriYenile(); return;
+        }
+        bilgi.textContent=d.adim.soru+" · "+d.adim.yonerge; akis.appendChild(bilgi);
+        const dugmeler=document.createElement("div"); dugmeler.className="cmd-tools";
+        d.adim.secenekler.forEach(s=>{const b=document.createElement("button");b.type="button";b.textContent=s.etiket;
+          b.onclick=async()=>{b.disabled=true;try{const r=await fetch("/teshis/yanit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({oturum_no:d.oturum_no,secenek:s.id})});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);ciz(j)}catch(e){addNotice("Teşhis yanıtı kaydedilemedi: "+e.message)}finally{b.disabled=false}};
+          dugmeler.appendChild(b)}); akis.appendChild(dugmeler);
+      };
+      baslat.onclick=async()=>{const no=Number(vaka.value);if(!no){addNotice("Önce açık vaka numarasını yazın.");return;}
+        baslat.disabled=true;try{const r=await fetch("/teshis/baslat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({vaka_no:no,playbook:sec.value})});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);ciz(d)}catch(e){addNotice("Teşhis başlatılamadı: "+e.message)}finally{baslat.disabled=false}};
+      arac.append(vaka,sec,baslat); govde.append(arac,akis);
+    }
+    if(anahtar === "ajanda"){
+      const arac=document.createElement("div"); arac.className="cmd-tools";
+      const baslik=document.createElement("input"); baslik.placeholder="Başlık";
+      const tur=document.createElement("select");
+      [["gorev","Görev"],["randevu","Randevu"],["teslim","Teslim"]].forEach(x=>{const o=document.createElement("option");o.value=x[0];o.textContent=x[1];tur.appendChild(o)});
+      const tarih=document.createElement("input"); tarih.type="datetime-local"; tarih.setAttribute("aria-label","Son tarih");
+      const ekle=document.createElement("button"); ekle.type="button"; ekle.textContent="+ EKLE";
+      ekle.onclick=async()=>{if(!baslik.value.trim()||!tarih.value){addNotice("Başlık ve tarih gerekli.");return;}ekle.disabled=true;
+        try{const r=await fetch("/ajanda/ekle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({baslik:baslik.value,tur:tur.value,son_tarih:tarih.value})});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);addNotice("Ajanda kaydı eklendi.");await modulleriYenile()}catch(e){addNotice("Ajanda kaydı eklenemedi: "+e.message)}finally{ekle.disabled=false}};
+      arac.append(baslik,tur,tarih,ekle); govde.appendChild(arac);
+    }
+    if(anahtar === "komutlar"){
+      const gecmis = yerelListe(GECMIS_ANAHTAR).map(x=>({ad:"Son Kullanılan",deger:x,
+        aciklama:"Yakın zamanda çalıştırıldı",komut:x,gecmis:"1"}));
+      satirlar = [...gecmis, ...satirlar];
+      const arac = document.createElement("div"); arac.className="cmd-tools";
+      const ara=document.createElement("input"); ara.placeholder="Komut ara…"; ara.setAttribute("aria-label","Komut ara");
+      const kat=document.createElement("select");
+      ["Tümü",...new Set(satirlar.map(x=>x.ad))].forEach(ad=>{const o=document.createElement("option");o.textContent=ad;kat.appendChild(o)});
+      const ogret=document.createElement("button"); ogret.type="button"; ogret.textContent="+ ÖĞRET";
+      arac.append(ara,kat,ogret); govde.appendChild(arac);
+      filtrele=()=>{
+        const q=ara.value.toLocaleLowerCase("tr-TR"), sec=kat.value;
+        govde.querySelectorAll(".komut-row").forEach(row=>{
+          row.hidden=!!((q&&!row.dataset.search.includes(q))||(sec!=="Tümü"&&row.dataset.category!==sec));
+        });
+      };
+      ara.addEventListener("input",filtrele); kat.addEventListener("change",filtrele);
+      ogret.onclick=async()=>{
+        const phrase=prompt("JARVIS'e söyleyeceğiniz kısa komut:"); if(!phrase)return;
+        const expansion=prompt("Bu komutun gerçek karşılığı:\nÖrnek: Sistem durumunu göster."); if(!expansion)return;
+        const res=await fetch("/komut-ogret",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({phrase,expansion})});
+        const data=await res.json().catch(()=>({}));
+        if(!res.ok){addNotice("Komut öğretilemedi: "+(data.error||res.status));return;}
+        addNotice("Kişisel komut kaydedildi: "+phrase); await modulleriYenile();
+      };
+    }
+    satirlar.forEach(s=>{
       const satir = document.createElement("div");
       satir.className = "mrow";
+      satir.dataset.category=s.ad||"";
+      satir.dataset.search=((s.ad||"")+" "+(s.deger||"")+" "+(s.aciklama||"")).toLocaleLowerCase("tr-TR");
       const k = document.createElement("span");
       k.className = "k"; k.textContent = s.ad; k.title = s.ad;
       const v = document.createElement("span");
       v.className = "v"; v.textContent = s.deger; v.title = s.deger;
       satir.append(k, v);
+      if(s.aciklama && !s.komut) satir.title=s.aciklama;
+      if(anahtar==="ajanda" && s.kayit_no){
+        const tamam=document.createElement("button"); tamam.type="button"; tamam.className="fav-btn"; tamam.textContent="✓"; tamam.title="Tamamlandı olarak işaretle";
+        tamam.onclick=async()=>{tamam.disabled=true;try{const r=await fetch("/ajanda/durum",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kayit_no:s.kayit_no,durum:"tamamlandi"})});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);await modulleriYenile()}catch(e){addNotice("Ajanda güncellenemedi: "+e.message)}finally{tamam.disabled=false}};
+        satir.appendChild(tamam);
+      }
+      if(s.komut){
+        satir.classList.add("komut-row");
+        satir.title = (s.aciklama || "") + " · Yazı kutusuna almak için tıklayın";
+        satir.tabIndex = 0;
+        const sec = () => {
+          const kutu = document.getElementById("askInput");
+          if(!kutu) return;
+          kutu.value = s.komut;
+          kutu.focus();
+        };
+        satir.addEventListener("click", sec);
+        satir.addEventListener("keydown", e => {
+          if(e.key === "Enter" || e.key === " "){ e.preventDefault(); sec(); }
+        });
+        const fav=document.createElement("button"); fav.type="button"; fav.className="fav-btn";
+        const favlari=()=>yerelListe(FAVORI_ANAHTAR); const boya=()=>{const on=favlari().includes(s.komut);fav.classList.toggle("on",on);fav.textContent=on?"★":"☆";fav.title=on?"Favorilerden çıkar":"Favorilere ekle"};
+        fav.onclick=e=>{e.stopPropagation();let f=favlari();f=f.includes(s.komut)?f.filter(x=>x!==s.komut):[...f,s.komut];yerelYaz(FAVORI_ANAHTAR,f);boya()};
+        boya(); satir.appendChild(fav);
+      }
       govde.appendChild(satir);
     });
+    if(filtrele) filtrele();
   }
 
   document.getElementById("modules").addEventListener("click",e=>{
@@ -675,6 +820,61 @@
     document.querySelectorAll(".mod").forEach(m=>m.classList.remove("active"));
     e.target.classList.add("active");
     modulCiz(e.target.dataset.modul);
+  });
+
+  function bilgiDurumCiz(){
+    const veri = modulVeri && modulVeri.bilgi;
+    const tag = document.getElementById("bilgiTag");
+    if(!tag) return;
+    tag.textContent = veri ? (veri.ozet || "—") : "canlı veri yok";
+    tag.style.color = veri && veri.durum === "hazir" ? "" : "var(--mute)";
+  }
+
+  document.getElementById("bilgiForm").addEventListener("submit", async e=>{
+    e.preventDefault();
+    const input = document.getElementById("bilgiSorgu");
+    const btn = document.getElementById("bilgiAraBtn");
+    const alan = document.getElementById("bilgiSonuclar");
+    const sorgu = input.value.trim();
+    if(!sorgu) return;
+    btn.disabled = true; btn.textContent = "ARANIYOR";
+    alan.replaceChildren();
+    const bekle = document.createElement("div");
+    bekle.className = "mempty"; bekle.textContent = "Bilgi tabanı aranıyor…";
+    alan.appendChild(bekle);
+    try{
+      const res = await fetch("/bilgi/ara", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({sorgu, limit:5})
+      });
+      const d = await res.json();
+      if(!res.ok) throw new Error(d.error || "arama başarısız");
+      alan.replaceChildren();
+      document.getElementById("bilgiTag").textContent =
+        d.adet + " sonuç · " + d.sure_ms + " ms";
+      if(!d.sonuclar.length){
+        const bos = document.createElement("div");
+        bos.className = "mempty";
+        bos.textContent = "Bu sorguyla eşleşen bir belge bulunamadı.";
+        alan.appendChild(bos);
+      }
+      d.sonuclar.forEach(h=>{
+        const kart = document.createElement("div"); kart.className = "rag-hit";
+        const src = document.createElement("div"); src.className = "src";
+        const why = document.createElement("span"); why.className = "why";
+        why.textContent = h.neden || "eşleşme";
+        src.textContent = h.kaynak; src.appendChild(why);
+        const baslik = document.createElement("div"); baslik.className = "title";
+        baslik.textContent = h.baslik || "Belge parçası";
+        const metin = document.createElement("div"); metin.className = "excerpt";
+        metin.textContent = h.metin;
+        kart.append(src, baslik, metin); alan.appendChild(kart);
+      });
+    }catch(err){
+      alan.replaceChildren();
+      const hata = document.createElement("div"); hata.className = "mempty";
+      hata.textContent = "Arama yapılamadı: " + err.message; alan.appendChild(hata);
+    }finally{ btn.disabled = false; btn.textContent = "ARA"; }
   });
   function tick(){ document.getElementById("clock").textContent=new Date().toLocaleTimeString("tr-TR"); }
   tick(); setInterval(tick,1000);
@@ -856,13 +1056,29 @@
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
+    let approveHigh=false;
+    try{
+      const analizRes=await fetch("/komut-analiz",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text})});
+      const analiz=await analizRes.json();
+      if(analiz.risk==="CRITICAL"){
+        addMessage("assistant","Kritik işlem panelden çalıştırılmaz; yazılı CLI onayı gerekir."); return;
+      }
+      if(analiz.risk==="HIGH"||analiz.needs_confirmation){
+        const ozet=`Niyet: ${analiz.intent}\nRisk: ${analiz.risk}\n${analiz.reason||"Sistem değişikliği"}`;
+        if(!confirm(ozet+"\n\nBu işlemi bir kez onaylıyor musunuz?")) return;
+        approveHigh=true;
+      }
+    }catch(_){ /* analiz servisi yoksa mevcut PermissionManager yine korur */ }
+    const onceki = yerelListe(GECMIS_ANAHTAR).filter(x=>x!==text);
+    yerelYaz(GECMIS_ANAHTAR, [text,...onceki].slice(0,10));
     input.value = "";
     btn.disabled = true;
     try {
       const res = await fetch("/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, approve_high: approveHigh }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -1384,7 +1600,8 @@
       const res = await fetch("/moduller");
       if(!res.ok) return;
       modulVeri = await res.json();
-      if(!MODULLER[aktifModul] || !MODULLER[aktifModul].gorunum) modulCiz(aktifModul);
+      if(aktifModul === "bilgi") bilgiDurumCiz();
+      else if(!MODULLER[aktifModul] || !MODULLER[aktifModul].gorunum) modulCiz(aktifModul);
     }catch(_){ /* panel bu yüzden bozulmamalı */ }
   }
   modulleriYenile();
@@ -1664,6 +1881,7 @@
   }
   function setText(id, v) { const el = $(id); if (el) el.textContent = v; }
   function dimRow(id) { const el = $(id); if (el && el.closest(".st")) el.closest(".st").classList.add("off"); }
+  function undimRow(id) { const el = $(id); if (el && el.closest(".st")) el.closest(".st").classList.remove("off"); }
   function markDemo(id, label) {
     const el = $(id);
     if (!el) return;
@@ -1719,6 +1937,7 @@
         // "1.284 parça" yazıp anlam aramasının kapalı olduğunu gizlemek
         // panelin uydurmama kuralına aykırı olurdu.
         if (m.rag) {
+          undimRow("bmRag");
           setText("bmRag", m.rag_parca.toLocaleString("tr-TR") + " parça"
                            + (m.rag_anlam ? "" : " · kelime"));
         } else { setText("bmRag", "yok"); dimRow("bmRag"); }
@@ -1782,6 +2001,9 @@
             + "Sizi tanımaz, söylediğinizi anlamaz, yalnızca birkaç kalıp cevap verir. "
             + "Gerçek modele geçmek için .env içine JARVIS_LLM_PROVIDER=ollama.");
         }
+        // Arka plan eşitlemesi bitince başlangıçta alınmış modül sayımlarını
+        // yenile. Meta olayı küçük; belge listesi yalnızca gerektiğinde gelir.
+        if (m.rag_sync && m.rag_sync.durum !== "çalışıyor") modulleriYenile();
       } catch (_) {}
     });
 

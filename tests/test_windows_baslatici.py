@@ -40,7 +40,7 @@ def _yalniz_lf(govde: bytes) -> int:
 
 #: Windows'ta çalışan bütün PowerShell betikleri. Yeni bir tane eklenince
 #: aynı tuzaklara aynı şekilde düşmesin diye liste burada.
-BETIKLER = ("src/kur.ps1", "src/kur-windows.ps1")
+BETIKLER = ("src/kur.ps1", "src/kur-windows.ps1", "src/watchdog.ps1")
 
 
 @pytest.mark.parametrize("betik", BETIKLER)
@@ -264,6 +264,23 @@ def test_the_python_path_can_be_overridden():
     assert 'L"python"' in _kaynak()
 
 
+def test_windows_installer_registers_a_user_watchdog():
+    installer = _oku("src/kur-windows.ps1").decode("utf-8-sig")
+    watchdog = _oku("src/watchdog.ps1").decode("utf-8-sig")
+    assert "J.A.R.V.I.S. Watchdog.lnk" in installer
+    assert "Programs\\Startup" in installer
+    assert "Invoke-WebRequest" in watchdog and "/health" in watchdog
+    assert "Start-Process" in watchdog and "JARVIS.exe" in watchdog
+    assert "Local\\JARVIS-Watchdog" in watchdog, "yalnizca tek izleyici calismali"
+
+
+def test_watchdog_can_be_disabled_in_ini():
+    ini = (WINDOWS / "jarvis.ini").read_text(encoding="utf-8-sig")
+    watchdog = _oku("src/watchdog.ps1").decode("utf-8-sig")
+    assert "watchdog = 1" in ini
+    assert 'Ini-Oku $ini "watchdog" "1"' in watchdog
+
+
 # ---------------- tek asistan ----------------
 # Bir donem ayni exe ikinci bir asistani da baslatiyordu ("JARVIS.exe
 # friday"): asistan komut satirindan seciliyor, ini adi ve port ondan
@@ -320,7 +337,9 @@ def test_the_installer_writes_the_settings_file():
 
 def test_the_shortcut_needs_no_argument():
     kaynak = _kurulum_kaynagi()
-    assert '$lnk.Arguments' not in kaynak
+    govde = kaynak[kaynak.index("function Kisayol-Yap"):]
+    govde = govde[:govde.index("if (Kisayol-Yap")]
+    assert '$lnk.Arguments' not in govde
     assert 'Kisayol-Yap $Masaustu "J.A.R.V.I.S."' in kaynak
 
 

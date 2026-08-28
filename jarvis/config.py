@@ -96,6 +96,12 @@ def _env_opt(name: str) -> Callable[[], str | None]:
     return lambda: _oku(name)
 
 
+def _paths(name: str) -> tuple[Path, ...]:
+    """Read a comma-separated, explicitly opted-in list of local paths."""
+    raw = _oku(name) or ""
+    return tuple(Path(p.strip()).expanduser() for p in raw.split(",") if p.strip())
+
+
 @dataclass
 class Config:
     """Runtime configuration snapshot."""
@@ -205,6 +211,14 @@ class Config:
     rag_embed_enabled: bool = field(default_factory=lambda: _bool("JARVIS_RAG_EMBED_ENABLED", True))
     #: Bağlama kaç parça girsin. Fazlası asıl soruyu bastırır.
     rag_limit: int = field(default_factory=lambda: int(_float("JARVIS_RAG_LIMIT", 5)))
+    # Otomatik indeksleme yalnızca açıkça yazılan yolları izler. Ev dizinini
+    # veya çalışma klasörünü kendiliğinden taramak hem pahalı hem sürprizdir.
+    rag_auto_paths: tuple[Path, ...] = field(
+        default_factory=lambda: _paths("JARVIS_RAG_AUTO_PATHS"))
+    rag_sync_interval: float = field(
+        default_factory=lambda: max(10.0, _float("JARVIS_RAG_SYNC_INTERVAL", 60.0)))
+    reminder_interval: float = field(
+        default_factory=lambda: max(5.0, _float("JARVIS_REMINDER_INTERVAL", 30.0)))
 
     # --- camera (local vision) ---
     # Off by default: a camera in a workshop sees customers and couriers, and
@@ -276,6 +290,11 @@ class Config:
     # Request tracing keeps raw user text off disk by default.  Enable only on
     # a development machine where that privacy trade-off is intentional.
     trace_user_text: bool = field(default_factory=lambda: _bool("JARVIS_TRACE_USER_TEXT", False))
+    # Audit ve istek logları sınırsız büyümez. 0 rotation'ı kapatır.
+    log_max_bytes: int = field(default_factory=lambda: max(
+        0, int(_float("JARVIS_LOG_MAX_BYTES", 10 * 1024 * 1024))))
+    log_backup_count: int = field(default_factory=lambda: max(
+        0, int(_float("JARVIS_LOG_BACKUP_COUNT", 5))))
 
     @property
     def audit_log_path(self) -> Path:

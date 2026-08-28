@@ -188,7 +188,7 @@ def test_output_that_is_not_wav_is_rejected(tmp_path, monkeypatch):
     assert "WAV" in str(exc.value)
 
 
-def test_empty_stdout_retries_with_a_file_for_new_piper(tmp_path, monkeypatch):
+def test_new_piper_writes_directly_to_a_named_file(tmp_path, monkeypatch):
     model = tmp_path / "ses.onnx"
     model.write_bytes(b"sahte")
     (tmp_path / "ses.onnx.json").write_text("{}")
@@ -203,15 +203,14 @@ def test_empty_stdout_retries_with_a_file_for_new_piper(tmp_path, monkeypatch):
         def communicate(self, girdi, timeout=None):
             calls.append(self.command)
             output = self.command[self.command.index("-f") + 1]
-            if output == "-":
-                return b"", b""
+            assert output != "-"
             Path(output).write_bytes(b"RIFF" + b"x" * 20)
             return b"", b""
 
     monkeypatch.setattr("shutil.which", lambda ad: "/usr/bin/piper")
     monkeypatch.setattr(subprocess, "Popen", lambda command, **k: _Sahte(command))
     assert b"".join(PiperTTS(model).synthesize("merhaba")).startswith(b"RIFF")
-    assert len(calls) == 2
+    assert len(calls) == 1
 
 
 def test_a_piper_failure_carries_its_last_line(tmp_path, monkeypatch):

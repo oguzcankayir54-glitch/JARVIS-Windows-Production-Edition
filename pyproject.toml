@@ -46,7 +46,7 @@ bilgi = ["numpy>=1.24"]
 #           tonlaması belirgin biçimde daha yapay.
 # (Ölçüm yöntemi: jarvis/voice/soyleyis.py)
 ses = ["edge-tts>=7.0"]
-ses-yerel = ["piper-tts>=1.2"]
+ses-yerel = ["piper-tts>=1.7"]
 # YOLO nesne algılama. Model ağırlığı ilk kullanımda ayrıca indirilir.
 gorsel = ["ultralytics>=8.3", "opencv-python-headless>=4.8,<5"]
 # Explicit opt-in biometric identity support; raw frames are never persisted.
@@ -59,6 +59,8 @@ jarvis-panel = "jarvis.web.cli:main"
 jarvis-tanit = "jarvis.core.identity_cli:main"
 jarvis-karsilastir = "jarvis.eval.cli:main"
 jarvis-bilgi = "jarvis.rag.cli:main"
+jarvis-yedek = "jarvis.maintenance.backup:main"
+jarvis-kabul = "jarvis.acceptance.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -135,6 +135,34 @@ jarvis-bilgi sifirla
 Model kaynağı söylemek zorunda; söylemiyorsa bilgi tabanından değil kendi
 belleğinden konuşuyor demektir.
 
+### Panelden ara
+
+Panelin altındaki **Bilgi** modülüne geçin. Arama kutusu aynı hibrit indeksi
+kullanır ve her sonucu `dosya:satır`, eşleşme nedeni (`anlam`, `kelime` veya
+ikisi) ve kısa bir önizlemeyle gösterir. Belge metni HTML olarak çalıştırılmaz;
+yalnızca düz metin olarak çizilir.
+
+### Otomatik eşitle
+
+Her değişiklikten sonra `jarvis-bilgi ekle` çalıştırmak yerine izlenecek
+klasörleri `.env` içinde açıkça yazabilirsiniz:
+
+```env
+JARVIS_RAG_AUTO_PATHS=~/jarvis,~/Belgeler/teknik
+JARVIS_RAG_SYNC_INTERVAL=60
+```
+
+Panel açılır açılmaz ilk eşitleme yapılır, ardından belirtilen saniye aralığıyla
+tekrarlanır. Yeni dosyalar eklenir, değişenler yeniden parçalanıp gömülür,
+kaynaktan silinenler indeksten de kaldırılır. Değişmeyen belgeler içerik
+imzasından tanınır ve yeniden gömülmez.
+
+Otomatik tarama varsayılan olarak **kapalıdır**. J.A.R.V.I.S. ev dizinini veya
+çalışma klasörünü kendiliğinden indekslemez; yalnızca bu ayarda açıkça verilen
+yolları okur. Birden fazla yol virgülle ayrılır ve en kısa aralık 10 saniyedir.
+Panelde Bilgi sekmesi eşitlemenin kapalı, çalışıyor, hazır veya hatalı olduğunu
+gösterir.
+
 ---
 
 ## Nasıl çalışıyor

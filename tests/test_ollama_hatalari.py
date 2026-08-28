@@ -112,8 +112,12 @@ def test_an_unreadable_body_does_not_hide_the_error():
 # ---------------- açılış yoklaması ----------------
 # Asıl düzeltme bu: hata konuşmanın ortasında değil, açılışta çıkmalı.
 
-def test_an_unreachable_ollama_is_reported_at_startup():
-    """Bu konteynerde Ollama kapalı; yoklama bunu söylemeli."""
+def test_an_unreachable_ollama_is_reported_at_startup(monkeypatch):
+    """Reddedilen bağlantı her işletim sisteminde aynı çözümü göstermeli."""
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            urllib.error.URLError("connection refused")))
     eksik = ollama_hazir("http://127.0.0.1:1", "qwen2.5:14b-instruct", timeout=1.0)
     assert eksik
     assert "ollama serve" in eksik

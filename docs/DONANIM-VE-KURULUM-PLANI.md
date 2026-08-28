@@ -208,9 +208,8 @@ görmelisin. Görüyorsan **GPU gerçekten kullanılıyor** demektir.
 
 ### Adım 7 — J.A.R.V.I.S.
 ```bash
-git clone https://github.com/oguzcankayir54-glitch/jarvis.git
-cd jarvis
-git checkout claude/jarvis-architecture-analysis-40i73f
+git clone --branch feat/complete-project-sync https://github.com/oguzcankayir54-glitch/JARVIS-Windows-Production-Edition.git
+cd JARVIS-Windows-Production-Edition
 ./kurulum.sh
 ```
 

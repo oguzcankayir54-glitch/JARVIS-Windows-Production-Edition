@@ -43,6 +43,10 @@ $BaslatMenusu = ""
 if ($env:APPDATA) {
     $BaslatMenusu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 }
+$Baslangic = ""
+if ($env:APPDATA) {
+    $Baslangic = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
+}
 
 function Yaz($metin, $renk = "Gray") { Write-Host $metin -ForegroundColor $renk }
 function Baslik($metin) {
@@ -62,6 +66,7 @@ if ($Kaldir) {
     Baslik "J.A.R.V.I.S. kaldiriliyor"
     foreach ($k in @((Join-Path $Masaustu "J.A.R.V.I.S..lnk"),
                      (Join-Path $BaslatMenusu "J.A.R.V.I.S..lnk"),
+                     (Join-Path $Baslangic "J.A.R.V.I.S. Watchdog.lnk"),
                      (Join-Path $Masaustu "F.R.I.D.A.Y..lnk"),
                      (Join-Path $BaslatMenusu "F.R.I.D.A.Y..lnk"))) {
         if ($k -and (Test-Path $k)) { Remove-Item $k -Force; Tamam "kisayol silindi" }
@@ -262,6 +267,7 @@ function Ini-Yaz($kod, $ad, $port) {
         "genislik = 1920",
         "yukseklik = 1080",
         "intro = 1",
+        "watchdog = 1",
         "jeton ="
     )
     if (Test-Path $yol) {
@@ -321,6 +327,21 @@ if (Kisayol-Yap $Masaustu "J.A.R.V.I.S." "J.A.R.V.I.S. — kisisel teknik asista
     Tamam "masaustu: J.A.R.V.I.S."
 } else { Uyari "masaustu kisayolu atlandi (klasor bulunamadi)" }
 Kisayol-Yap $BaslatMenusu "J.A.R.V.I.S." "J.A.R.V.I.S. — kisisel teknik asistan" | Out-Null
+
+# Watchdog kullanici oturumunda calisir; yonetici veya Windows servisi
+# gerekmez. Panel uc kez ust uste yanit vermezse baslaticiyi yeniden acar.
+if ($Baslangic -and (Test-Path $Baslangic)) {
+    $kabuk = New-Object -ComObject WScript.Shell
+    $lnk = $kabuk.CreateShortcut((Join-Path $Baslangic "J.A.R.V.I.S. Watchdog.lnk"))
+    $lnk.TargetPath = "powershell.exe"
+    $watchdog = Join-Path $Uygulama "windows\src\watchdog.ps1"
+    $lnk.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchdog`" -Kok `"$Kok`""
+    $lnk.WorkingDirectory = $Kok
+    $lnk.IconLocation = Join-Path $Kok "jarvis.ico"
+    $lnk.Description = "J.A.R.V.I.S. panelini izler ve gerekirse yeniden baslatir"
+    $lnk.Save()
+    Tamam "watchdog Windows baslangicina eklendi"
+} else { Uyari "watchdog baslangic kisayolu olusturulamadi" }
 
 # ------------------------------------------------------------------ 6. dogrula
 

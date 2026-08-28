@@ -136,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
     from ..acceptance.engine import run_acceptance
     acceptance_report = run_acceptance(
         cfg, tts=tts, stt=stt, vision=vision,
+        object_vision=object_vision, ocr=ocr,
+        face_recognizer=face_recognizer,
         ollama_probe=lambda *_: _llm_eksik,
     )
     # The panel can run terminal commands, so anything beyond this machine

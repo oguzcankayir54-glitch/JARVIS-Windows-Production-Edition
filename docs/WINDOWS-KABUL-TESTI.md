@@ -19,6 +19,7 @@ görünür.
 - Veri klasörünün yazılabilirliği ve en az 5 GB boş disk
 - Ollama servisinin ve seçilen gerçek modelin varlığı
 - Seslendirme, faster-whisper mikrofon ve OpenCV kamera altyapısı
+- Etkinleştirilmişse YOLO nesne algılama, OCR ve yerel yüz kimliği sağlayıcıları
 - Windows kullanıcı oturumu bildirim desteği
 - Sistem telemetrisi ve regresyon test paketi
 

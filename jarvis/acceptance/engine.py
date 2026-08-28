@@ -57,6 +57,7 @@ def _provider(check_id: str, name: str, provider, *, enabled: bool,
 
 
 def run_acceptance(cfg, *, tts=None, stt=None, vision=None,
+                   object_vision=None, ocr=None, face_recognizer=None,
                    notifier=None, ollama_probe=ollama_hazir) -> AcceptanceReport:
     """Salt-okunur üretim yoklaması; cihaz açmaz ve ayar değiştirmez."""
     checks: list[AcceptanceCheck] = []
@@ -100,6 +101,19 @@ def run_acceptance(cfg, *, tts=None, stt=None, vision=None,
                             fix="JARVIS_STT_ENABLED=true ve pip install -e .[mikrofon]"))
     checks.append(_provider("camera", "Kamera analizi", vision, enabled=cfg.vision_enabled,
                             fix="JARVIS_VISION_ENABLED=true ve pip install -e .[kamera]"))
+    # Bu üç yetenek açık rıza gerektiren isteğe bağlı katmanlar. Kapalı
+    # olmaları üretim kabulünü düşürmez; kullanıcı açtıysa çalışmaları gerekir.
+    optional_vision = (
+        ("object_vision_enabled", "objects", "Nesne algılama", object_vision,
+         "pip install -e .[gorsel]"),
+        ("ocr_enabled", "ocr", "Görüntüden metin (OCR)", ocr,
+         "pip install -e .[gorsel]"),
+        ("face_recognition_enabled", "face_identity", "Yüz kimliği", face_recognizer,
+         "pip install -e .[yuz]"),
+    )
+    for setting, check_id, name, provider, fix in optional_vision:
+        if getattr(cfg, setting, False):
+            checks.append(_provider(check_id, name, provider, enabled=True, fix=fix))
 
     toast = notifier or WindowsNotifier()
     checks.append(AcceptanceCheck(

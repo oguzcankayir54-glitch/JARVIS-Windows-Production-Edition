@@ -1094,6 +1094,26 @@ def test_the_icon_does_not_need_a_token(token_server):
         assert r.status == 200
 
 
+def test_mobile_manifest_is_public_and_never_contains_the_token(token_server):
+    """The browser fetches install metadata before it can prove panel access."""
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{token_server.port}/manifest.webmanifest", timeout=5
+    ) as r:
+        body = r.read().decode("utf-8")
+        manifest = json.loads(body)
+    assert r.headers["Content-Type"].startswith("application/manifest+json")
+    assert manifest["display"] == "standalone"
+    assert manifest["start_url"] == "/"
+    assert token_server.token not in body
+
+
+def test_panel_links_mobile_install_metadata():
+    from jarvis.web.server import PANEL_HTML
+    html = PANEL_HTML.read_text(encoding="utf-8")
+    assert 'rel="manifest" href="/manifest.webmanifest"' in html
+    assert 'rel="apple-touch-icon"' in html
+
+
 def test_the_panel_points_at_that_icon():
     from jarvis.web.server import PANEL_HTML
     assert 'href="/favicon.ico"' in PANEL_HTML.read_text(encoding="utf-8")

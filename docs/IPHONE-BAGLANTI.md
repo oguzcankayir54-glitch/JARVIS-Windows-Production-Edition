@@ -1,7 +1,7 @@
 # J.A.R.V.I.S. — iPhone Bağlantısı
 
-> Amaç: Telefondan J.A.R.V.I.S. ile yazışmak ve sesli cevap almak.
-> Mikrofon (konuşarak sorma) sonraki fazda.
+> Amaç: Telefondan J.A.R.V.I.S. ile yazışmak, konuşarak sormak ve sesli cevap
+> almak. Panel ana ekrana kurulabilen bir web uygulaması olarak çalışır.
 
 ---
 
@@ -146,6 +146,18 @@ Safari'de sayfa açıkken:
 
 Artık ana ekranda kendi simgesiyle durur, tam ekran açılır ve Safari arayüzü
 görünmez.
+
+Kurulan uygulamanın başlangıç adresine erişim jetonu yazılmaz. İlk yetkili
+ziyarette kaydedilen çerez kullanılır; çerezin süresi dolarsa uygulamayı
+Safari'de jetonlu adresle bir kez yeniden açın.
+
+## Mikrofonla konuşarak sorma
+
+Mikrofon düğmesi yalnızca güvenli tarayıcı bağlamında çalışır. `localhost`
+dışındaki düz `http://192.168...` adreslerinde iOS mikrofon izni vermez.
+Telefondan konuşarak sormak için paneli Tailscale HTTPS ya da eşdeğer geçerli
+bir HTTPS adresi üzerinden açın. Yazışma ve sesli cevap düz ev ağı adresinde
+çalışmaya devam eder.
 
 ---
 

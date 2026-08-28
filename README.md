@@ -293,8 +293,10 @@ docs/           Mimari, donanım ve kullanım belgeleri
    panelden kaynaklı arama · seçili klasörleri otomatik eşitleme
    (`docs/BILGI-TABANI.md`)
 5. ✅ **Faz 4** — Diagnostic Brain: vaka kaydı · geçmiş arama · yönlendirmeli karar ağacı
-6. **Faz 5** — iPhone istemci · 🔸 **Faz 6** — Vision: hedef takibi ✅ ·
-    yüz tanıma, karşılama, nesne tanıma sırada (`docs/KAMERA.md`) ·
+6. 🔸 **Faz 5** — iPhone: mobil panel + ana ekrana kurulum ✅ · güvenli uzaktan
+    mikrofon HTTPS gerektirir · ✅ **Faz 6 altyapısı** — Vision: hedef takibi,
+    isteğe bağlı nesne algılama, OCR ve izinli yüz kimliği (`docs/KAMERA.md`) ·
+    proaktif karşılama sırada ·
     **Faz 7** — Proaktif + Ajanda ✅
 
 ## Belgeler

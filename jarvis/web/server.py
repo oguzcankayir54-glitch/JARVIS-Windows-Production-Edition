@@ -14,6 +14,7 @@ exactly where an extra dependency is least welcome.
     POST /gor       raw image body → faces found (local, frame not kept)
     GET  /moduller  per-module detail for the module bar
     GET  /health    liveness probe
+    GET  /manifest.webmanifest  installable mobile-app metadata (no secrets)
 
 **Binds to 127.0.0.1 by default and should stay there.** This endpoint can
 run terminal commands through the agent, so exposing it on a LAN address
@@ -861,6 +862,8 @@ def _make_handler(server: PanelServer):
 
             if path == "/favicon.ico":
                 return self._serve_ico()
+            if path == "/manifest.webmanifest":
+                return self._serve_manifest()
 
             if not self._authorised():
                 return self._reject()
@@ -1163,6 +1166,35 @@ def _make_handler(server: PanelServer):
             self.send_header("Cache-Control", "max-age=86400")
             self.end_headers()
             self.wfile.write(govde)
+
+        def _serve_manifest(self) -> None:
+            """Serve public install metadata without embedding the panel token."""
+            manifest = {
+                "id": "/",
+                "name": "J.A.R.V.I.S. Neural Core",
+                "short_name": "J.A.R.V.I.S.",
+                "description": "Yerel yapay zeka teknisyen asistanı",
+                "lang": "tr",
+                "start_url": "/",
+                "scope": "/",
+                "display": "standalone",
+                "orientation": "any",
+                "background_color": "#05090e",
+                "theme_color": "#05090e",
+                "icons": [{
+                    "src": "/favicon.ico",
+                    "sizes": "16x16 20x20 24x24 32x32 40x40 48x48 64x64 128x128 256x256",
+                    "type": "image/x-icon",
+                    "purpose": "any",
+                }],
+            }
+            body = json.dumps(manifest, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/manifest+json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            self.wfile.write(body)
 
         def _serve_panel(self) -> None:
             if not PANEL_HTML.is_file():

@@ -82,6 +82,10 @@ class OllamaProvider:
         self.num_predict = profile.num_predict if level else self._base_num_predict
         self.think = profile.thinking if level >= 4 else self._base_think
 
+    def warmup(self) -> None:
+        """Load the model once before the first user turn."""
+        self.chat([Message(role="user", content="Kısa yanıt ver: hazır.")])
+
     def chat(self, messages: list[Message], tools: list[dict[str, Any]] | None = None) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self.model,

@@ -154,6 +154,7 @@ class Config:
     ollama_num_predict: int = field(
         default_factory=lambda: max(32, int(_float("JARVIS_OLLAMA_NUM_PREDICT", 512))))
     ollama_keep_alive: str = field(default_factory=_env("JARVIS_OLLAMA_KEEP_ALIVE", "30m"))
+    ollama_preload: bool = field(default_factory=lambda: _bool("JARVIS_OLLAMA_PRELOAD", False))
 
     # --- voice ---
     elevenlabs_api_key: str | None = field(default_factory=_env_opt("ELEVENLABS_API_KEY"))

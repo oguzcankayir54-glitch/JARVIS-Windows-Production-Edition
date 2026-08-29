@@ -39,6 +39,13 @@ def main(argv: list[str] | None = None) -> int:
     # okumayi zorlastiriyor; buyuk harfli sade ad yeterli.
     etiket = asistan.sade_ad.upper()
     agent = build_agent(cfg)
+    if cfg.ollama_preload and hasattr(agent.llm, "warmup"):
+        print("· Qwen modeli ısıtılıyor…", flush=True)
+        try:
+            agent.llm.warmup()
+            print("· Qwen hazır; ilk mesaj beklemeyecek.", flush=True)
+        except Exception as exc:
+            print(f"! Qwen ön yükleme başarısız: {type(exc).__name__}", flush=True)
 
     speak = (args.sesli or cfg.voice_enabled) and not args.sessiz
     tts = tts_from_config(cfg)

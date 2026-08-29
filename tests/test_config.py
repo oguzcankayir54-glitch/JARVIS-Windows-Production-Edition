@@ -31,6 +31,7 @@ _ENV_KEYS = [
     "JARVIS_SCREENSHOT_ENABLED",
     "JARVIS_APPROVAL_SOUND_ENABLED",
     "JARVIS_MULTI_AGENT_ENABLED", "JARVIS_MULTI_AGENT_MAX_DELEGATIONS",
+    "JARVIS_OLLAMA_PRELOAD",
     "JARVIS_LLM_PROVIDER", "JARVIS_OLLAMA_MODEL", "JARVIS_NON_INTERACTIVE",
     "JARVIS_MAX_AGENT_STEPS", "JARVIS_DATA_DIR",
     "JARVIS_TEMPERATURE", "JARVIS_TOP_P", "JARVIS_REPEAT_PENALTY",
@@ -75,6 +76,7 @@ def test_defaults_without_dotenv(clean_env):
     assert cfg.approval_sound_enabled is True
     assert cfg.multi_agent_enabled is False
     assert cfg.multi_agent_max_delegations == 1
+    assert cfg.ollama_preload is False
     assert not cfg.voice_configured
     assert cfg.elevenlabs_model_id == "eleven_flash_v2_5"
     assert cfg.elevenlabs_output_format == "mp3_44100_128"

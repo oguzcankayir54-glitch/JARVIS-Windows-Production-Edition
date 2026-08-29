@@ -10,7 +10,7 @@ import json
 import pytest
 
 from jarvis.llm import ollama_provider as mod
-from jarvis.llm.base import Message
+from jarvis.llm.base import LLMResponse, Message
 from jarvis.llm.ollama_provider import OllamaProvider
 from jarvis.llm.errors import ErrorType, LLMProviderError
 
@@ -196,6 +196,15 @@ def test_sampling_options_are_sent(monkeypatch):
         "num_predict": 512}
     assert gonderilen["think"] is False
     assert gonderilen["keep_alive"] == "30m"
+
+
+def test_warmup_sends_one_short_model_request(monkeypatch):
+    calls = []
+    provider = OllamaProvider("http://x", "qwen")
+    monkeypatch.setattr(provider, "chat", lambda messages, tools=None: calls.append(messages) or LLMResponse(content="hazır"))
+    provider.warmup()
+    assert len(calls) == 1
+    assert calls[0][0].content == "Kısa yanıt ver: hazır."
 
 
 def test_provider_defaults_are_conservative():

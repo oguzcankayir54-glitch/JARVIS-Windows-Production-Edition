@@ -110,6 +110,13 @@ def main(argv: list[str] | None = None) -> int:
     # Panel bir istek iş parçacığında çalışıyor: varsayılan onaylayıcı stdin'den
     # okuduğu için HIGH/CRITICAL bir işlem tarayıcıyı sonsuza kadar bekletirdi.
     agent = build_agent(cfg, approver=panel_approver)
+    if cfg.ollama_preload and hasattr(agent.llm, "warmup"):
+        print("[llm] Qwen modeli ısıtılıyor…", flush=True)
+        try:
+            agent.llm.warmup()
+            print("[llm] Qwen hazır; ilk mesaj beklemeyecek.", flush=True)
+        except Exception as exc:
+            print(f"[llm] ön yükleme başarısız: {type(exc).__name__}", flush=True)
     tts = tts_from_config(cfg)
     close_tts = getattr(tts, "close", None)
     if callable(close_tts):

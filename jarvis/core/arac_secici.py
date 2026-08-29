@@ -177,7 +177,8 @@ def kategorileri_bul(metin: str) -> list[str]:
 
 
 def araclari_sec(semalar: list[dict], metin: str,
-                 sinir: int = VARSAYILAN_SINIR) -> list[dict]:
+                 sinir: int = VARSAYILAN_SINIR,
+                 onceki_kategoriler: list[str] | None = None) -> list[dict]:
     """Bu tur için gösterilecek şemalar.
 
     ``sinir`` sıfır ya da negatifse daraltma yapılmıyor: büyük bir model
@@ -187,7 +188,10 @@ def araclari_sec(semalar: list[dict], metin: str,
     if sinir is None or sinir <= 0 or len(semalar) <= sinir:
         return semalar
 
-    sirali = kategorileri_bul(metin)
+    # Qwen puts tool schemas in its system block.  A filler turn such as
+    # "peki" is still the same subject; changing the schema list there
+    # invalidates the measured prompt cache for no capability benefit.
+    sirali = kategorileri_bul(metin) or list(onceki_kategoriler or ())
     secilen: list[dict] = []
     alinan: set[str] = set()
 
@@ -214,3 +218,19 @@ def araclari_sec(semalar: list[dict], metin: str,
                 ekle(sema)
 
     return secilen[:sinir]
+
+
+_ARA_CUMLELER = frozenset({
+    "peki", "evet", "tamam", "tamam devam et", "devam et", "anladim",
+    "hı hı", "hi hi", "aynen", "olur",
+})
+
+
+def ara_cumle_mi(metin: str) -> bool:
+    """A short continuation may reuse the previous intent and tool schema.
+
+    The restriction matters: applying stickiness to every uncategorised turn
+    would leak an old system/tool context into unrelated smalltalk.  These are
+    deliberately explicit discourse markers, not a fuzzy classifier.
+    """
+    return katla(metin or "").strip(" .,!?") in _ARA_CUMLELER

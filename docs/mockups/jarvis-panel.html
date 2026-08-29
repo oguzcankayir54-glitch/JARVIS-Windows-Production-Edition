@@ -1086,6 +1086,26 @@
     row.append(who, txt);
     transcript.appendChild(row);
     transcript.scrollTop = transcript.scrollHeight;
+    return txt;
+  }
+
+  // Streaming reuses the existing message bubble; it adds no layout node or
+  // CSS rule beyond the one bubble a completed answer already needs.
+  let akanMetin = null;
+  function akisParcasi(text) {
+    if (akanMetin === null) akanMetin = addMessage("assistant", "");
+    akanMetin.textContent += text;
+    transcript.scrollTop = transcript.scrollHeight;
+  }
+
+  function transkriptMesaji(role, text) {
+    if (role === "assistant" && akanMetin !== null) {
+      akanMetin.textContent = text;
+      akanMetin = null;
+      transcript.scrollTop = transcript.scrollHeight;
+      return;
+    }
+    addMessage(role, text);
   }
 
   form.addEventListener("submit", async (e) => {
@@ -2047,10 +2067,14 @@
       try { applyTelemetry(JSON.parse(e.data)); } catch (_) {}
     });
 
+    es.addEventListener("parca", (e) => {
+      try { akisParcasi(JSON.parse(e.data).text); } catch (_) {}
+    });
+
     es.addEventListener("transcript", (e) => {
       try {
         const d = JSON.parse(e.data);
-        addMessage(d.role, d.text);
+        transkriptMesaji(d.role, d.text);
         // Tur bitti: vaka açılmış veya belge eklenmiş olabilir.
         if (d.role === "assistant") modulleriYenile();
       } catch (_) {}

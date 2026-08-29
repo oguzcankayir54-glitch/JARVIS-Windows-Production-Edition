@@ -8,22 +8,36 @@ enforces the permission layer.
 """
 from __future__ import annotations
 
+import queue
 import threading
 import uuid
+from collections.abc import Callable, Iterator
 
-from ..llm.base import LLMProvider, Message
+from ..llm.base import LLMProvider, LLMResponse, Message
 from ..memory.cases import CaseStore
 from ..memory.store import MemoryStore
 from ..memory.working import WorkingMemory
 from ..tools.base import ToolRegistry, ToolResult
 from ..tools.manager import ToolManager
-from .arac_secici import VARSAYILAN_SINIR, araclari_sec
+from .arac_secici import (
+    VARSAYILAN_SINIR,
+    araclari_sec,
+    ara_cumle_mi,
+    kategorileri_bul,
+)
 from .asistan import Asistan, asistan_bul
 from .context_manager import ContextManager
 from .events import EventBus
 from .metin import ingilizce_agirlikli, katla
 from .multi_agent import DelegationDecision, Supervisor
 from .intent_router import Intent, IntentDecision, IntentRouter
+from .konusma import (
+    KonusmaDurumu,
+    bekleyen_soruyu_yakala,
+    durumu_guncelle,
+    ozetle,
+    pencerele,
+)
 from .observability import RequestTrace, RequestTraceLog
 from .persona import build_system_prompt
 from .response_engine import ResponseEngine
@@ -101,10 +115,20 @@ class Agent:
             Message(role="system",
                     content=build_system_prompt(self.owner, machine, self.asistan))
         ])
+        # This is metadata about the conversation, not a second copy of it:
+        # pending question, current topic and a bounded deterministic summary
+        # of turns that leave the model window.
+        self.durum = KonusmaDurumu()
+        self.num_ctx = int(getattr(llm, "num_ctx", 0) or 8192)
         # One Agent owns one mutable conversation. Serialising turns prevents
         # GUI/voice callers from interleaving messages and tool results.
         self._turn_lock = threading.RLock()
         self.last_intent = IntentDecision(Intent.UNKNOWN, 0.0)
+        # The last explicit topic and exact exposed schema order.  Qwen embeds
+        # schemas in the system block, so keeping these stable across a short
+        # continuation lets Ollama reuse its measured prompt cache.
+        self.son_kategoriler: list[str] = []
+        self.son_arac_adlari: tuple[str, ...] = ()
         self._state_event_unsubscribe = self.state.subscribe(self._on_state_event)
         self.events.publish("jarvis.started", {"session_id": self.session_id},
                             source="agent")
@@ -143,10 +167,26 @@ class Agent:
         ]
 
     def _baglami_daralt(self) -> None:
-        """Backward-compatible wrapper around the central ContextManager."""
-        self.context_manager.history_max_messages = self.history_max_messages
-        self.context_manager.max_chars = self.context_max_chars
-        self.history = self.context_manager.prune(self.history)
+        """Fit history once, preserving identity and conversational continuity.
+
+        ``ContextManager`` still owns dynamic blocks and tool-result limits.
+        Token-window pruning lives in :mod:`jarvis.core.konusma` because it
+        also knows which pending question must survive and returns every
+        dropped turn for the deterministic summary.  Applying both pruners
+        independently lost that information and could drop the protected
+        question in the second pass.
+        """
+        self.history, dusen = pencerele(
+            self.history,
+            self.num_ctx,
+            self.durum,
+            max_messages=self.history_max_messages,
+            max_chars=self.context_max_chars,
+        )
+        if dusen:
+            self.durum.conversation_summary = ozetle(
+                dusen, self.durum.conversation_summary
+            )
 
     def _arac_ciktisini_sinirla(self, metin: str) -> str:
         """Backward-compatible wrapper around ContextManager."""
@@ -154,6 +194,7 @@ class Agent:
         return self.context_manager.truncate_tool_result(metin)
 
     INTENT_ONEKI = "TUR INTENTI — DAHİLİ YÖNLENDİRME:"
+    DURUM_ONEKI = "Konuşmanın durumu"
 
     @staticmethod
     def _sema_adi(sema: dict) -> str:
@@ -162,9 +203,14 @@ class Agent:
     def _intent_schemas(self, adaylar: list[dict], karar: IntentDecision,
                         user_text: str) -> list[dict]:
         """Backward-compatible facade over the Phase-6 ToolRouter."""
-        return self.tool_router.select(
+        if ara_cumle_mi(user_text) and self.son_arac_adlari:
+            by_name = {self._sema_adi(schema): schema for schema in adaylar}
+            return [by_name[name] for name in self.son_arac_adlari if name in by_name]
+        selected = self.tool_router.select(
             adaylar, karar, user_text, limit=self.arac_siniri
         )
+        self.son_arac_adlari = tuple(self._sema_adi(s) for s in selected)
+        return selected
 
     def _intent_context(self, karar: IntentDecision) -> Message:
         extra = ""
@@ -438,6 +484,19 @@ class Agent:
             speech_confidence: float = 1.0,
             speech_ambiguity: bool = False) -> str:
         """Serialise a complete turn and always recover the central state."""
+        return self._execute_turn(
+            user_text,
+            original_text=original_text,
+            speech_confidence=speech_confidence,
+            speech_ambiguity=speech_ambiguity,
+        )
+
+    def _execute_turn(self, user_text: str, *,
+                      original_text: str | None = None,
+                      speech_confidence: float = 1.0,
+                      speech_ambiguity: bool = False,
+                      chunk_callback: Callable[[str], None] | None = None) -> str:
+        """One guarded turn shared by plain and streaming callers."""
         with self._turn_lock:
             self.active_delegation = None
             try:
@@ -445,6 +504,7 @@ class Agent:
                     user_text, original_text=original_text,
                     speech_confidence=speech_confidence,
                     speech_ambiguity=speech_ambiguity,
+                    chunk_callback=chunk_callback,
                 )
                 if self.active_delegation is not None:
                     role = self.active_delegation.role.value
@@ -478,9 +538,63 @@ class Agent:
                         JarvisState.STANDBY, reason="turn.finally.recovery"
                     )
 
+    def ask_stream(self, user_text: str, *, original_text: str | None = None,
+                   speech_confidence: float = 1.0,
+                   speech_ambiguity: bool = False) -> Iterator[str]:
+        """Yield answer chunks while reusing the exact guarded turn path.
+
+        The turn remains synchronous internally so state, trace, memory and
+        permission invariants have one implementation.  A joined producer
+        thread bridges its callback to this iterator; it is bounded to one per
+        active turn and is always joined when the stream is consumed.
+        """
+        chunks: queue.Queue[object] = queue.Queue()
+        done = object()
+        errors: list[BaseException] = []
+
+        def run() -> None:
+            emitted = False
+
+            def publish(chunk: str) -> None:
+                nonlocal emitted
+                if chunk:
+                    emitted = True
+                    chunks.put(chunk)
+
+            try:
+                answer = self._execute_turn(
+                    user_text,
+                    original_text=original_text,
+                    speech_confidence=speech_confidence,
+                    speech_ambiguity=speech_ambiguity,
+                    chunk_callback=publish,
+                )
+                if answer and not emitted:
+                    chunks.put(answer)
+            except BaseException as exc:  # re-raised in the consuming thread
+                errors.append(exc)
+            finally:
+                chunks.put(done)
+
+        producer = threading.Thread(
+            target=run, name="jarvis-answer-stream", daemon=True
+        )
+        producer.start()
+        try:
+            while True:
+                item = chunks.get()
+                if item is done:
+                    break
+                yield str(item)
+        finally:
+            producer.join()
+        if errors:
+            raise errors[0]
+
     def _ask_turn(self, user_text: str, *, original_text: str | None = None,
             speech_confidence: float = 1.0,
-            speech_ambiguity: bool = False) -> str:
+            speech_ambiguity: bool = False,
+            chunk_callback: Callable[[str], None] | None = None) -> str:
         """Run one full turn and return the assistant's final text."""
         self.state.transition(JarvisState.LISTENING)
         ilk_tur = not any(m.role == "user" for m in self.history)
@@ -493,12 +607,23 @@ class Agent:
         # Phase 2: decide the user's purpose before memory/RAG/tool routing.
         # The block is ephemeral: exactly one current-turn decision may live
         # in history, otherwise an old intent could steer the next message.
-        self.last_intent = self.intent_router.route(
+        routed_intent = self.intent_router.route(
             user_text,
             original_text=original_text,
             speech_confidence=speech_confidence,
             ambiguity=speech_ambiguity,
         )
+        bulunan_kategoriler = kategorileri_bul(user_text)
+        if ara_cumle_mi(user_text) and self.son_kategoriler:
+            # Keep the intent block as well as the schemas stable; changing
+            # either one changes Qwen's cached system prefix.
+            pass
+        else:
+            self.last_intent = routed_intent
+            if bulunan_kategoriler:
+                self.son_kategoriler = bulunan_kategoriler
+            elif not ara_cumle_mi(user_text):
+                self.son_kategoriler = []
         delegation = self.supervisor.route(self.last_intent)
         if delegation is not None:
             self.active_delegation = delegation
@@ -621,6 +746,15 @@ class Agent:
             ))
 
         self.history.append(Message(role="user", content=user_text))
+        self.durum = durumu_guncelle(self.durum, self.history, user_text)
+        durum_metni = self.durum.ozet_satiri()
+        self.history = self.context_manager.replace_system_block(
+            self.history,
+            self.DURUM_ONEKI,
+            (Message(role="system",
+                     content=f"{self.DURUM_ONEKI}\n{durum_metni}")
+             if durum_metni else None),
+        )
         # Semalar bu tura gore daraltiliyor: kullanicinin cumlesi hangi
         # kategoriyi cagristiriyorsa onlar gonderiliyor.
         #
@@ -651,7 +785,24 @@ class Agent:
                 apply_reasoning = getattr(self.llm, "apply_reasoning", None)
                 if apply_reasoning is not None:
                     apply_reasoning(self.last_intent.reasoning_level)
-                response = self.llm.chat(self.history, tools=schemas)
+                stream_call = (
+                    getattr(self.llm, "chat_stream", None)
+                    if chunk_callback is not None else None
+                )
+                streamed = False
+                if stream_call is None:
+                    response = self.llm.chat(self.history, tools=schemas)
+                else:
+                    pieces: list[str] = []
+                    for piece in stream_call(self.history, tools=schemas):
+                        if not piece:
+                            continue
+                        streamed = True
+                        pieces.append(piece)
+                        chunk_callback(piece)
+                    response = getattr(self.llm, "son_yanit", None)
+                    if not isinstance(response, LLMResponse):
+                        response = LLMResponse(content="".join(pieces))
             except Exception as exc:
                 self.events.publish(
                     "llm.error", {"model": self._trace_model_name(),
@@ -659,7 +810,10 @@ class Agent:
                     source="agent",
                 )
                 cevap = self._llm_hatasi(exc)
+                if chunk_callback is not None:
+                    chunk_callback(cevap)
                 self.history.append(Message(role="assistant", content=cevap))
+                self.durum = bekleyen_soruyu_yakala(self.durum, cevap)
                 if self.memory is not None:
                     self.memory.add_message(self.session_id, "assistant", cevap)
                 self._baglami_daralt()
@@ -688,7 +842,10 @@ class Agent:
                 cevap = self.response_engine.ground_tool_failures(
                     cevap, errors=unresolved, debug=self.debug_mode,
                 )
+                if chunk_callback is not None and not streamed:
+                    chunk_callback(cevap)
                 self.history.append(Message(role="assistant", content=cevap))
+                self.durum = bekleyen_soruyu_yakala(self.durum, cevap)
                 if self.memory is not None:
                     self.memory.add_message(self.session_id, "assistant", cevap)
                 self._baglami_daralt()
@@ -762,7 +919,10 @@ class Agent:
             "Bu isteği birkaç adımda tamamlayamadım; daha net sorabilir misiniz?",
             user_text,
         )
+        if chunk_callback is not None:
+            chunk_callback(fallback)
         self.history.append(Message(role="assistant", content=fallback))
+        self.durum = bekleyen_soruyu_yakala(self.durum, fallback)
         if self.memory is not None:
             self.memory.add_message(self.session_id, "assistant", fallback)
         self._baglami_daralt()

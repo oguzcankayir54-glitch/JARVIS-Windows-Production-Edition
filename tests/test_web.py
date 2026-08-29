@@ -1154,3 +1154,85 @@ def test_panel_links_mobile_install_metadata():
 def test_the_panel_points_at_that_icon():
     from jarvis.web.server import PANEL_HTML
     assert 'href="/favicon.ico"' in PANEL_HTML.read_text(encoding="utf-8")
+
+
+# ---------------- measured latency reaches the panel ----------------
+
+def test_meta_carries_the_measured_latency_breakdown(server):
+    """A measured slowdown is useful only if the operator can see its cause."""
+    server.agent.llm.son_kullanim = {
+        "okunan_token": 4545, "uretilen_token": 180,
+        "okuma_sn": 4.5, "uretim_sn": 6.0, "token_sn": 30.0,
+    }
+    kullanim = server._meta()["llm_kullanim"]
+    assert kullanim["okuma_sn"] == 4.5
+    assert kullanim["uretim_sn"] == 6.0
+
+
+def test_meta_survives_a_provider_that_measures_nothing(server):
+    """The mock provider has no timings; the panel must still start."""
+    assert server._meta()["llm_kullanim"] == {}
+
+
+def test_the_panel_gets_a_usage_copy_not_the_live_dict(server):
+    """A queued SSE snapshot must not change underneath its client."""
+    server.agent.llm.son_kullanim = {"okuma_sn": 1.0}
+    received = server._meta()["llm_kullanim"]
+    server.agent.llm.son_kullanim["okuma_sn"] = 99.0
+    assert received["okuma_sn"] == 1.0
+
+
+# ---------------- streaming reaches the panel ----------------
+
+def test_the_panel_publishes_chunks_as_they_arrive(server):
+    """Streaming is useful only when a chunk is published before completion."""
+    seen = []
+    original = server.hub.publish
+    server.hub.publish = lambda name, data, **kw: (
+        seen.append((name, data)), original(name, data, **kw))[1]
+    try:
+        server.ask("Merhaba")
+    finally:
+        server.hub.publish = original
+    names = [name for name, _ in seen]
+    assert "parca" in names
+    assert names.index("parca") < len(names) - 1
+
+
+def test_the_http_answer_is_still_the_whole_streamed_text(server):
+    """Clients that do not consume SSE keep the original HTTP contract."""
+    answer, _ = server.ask("Merhaba")
+    assert answer and len(answer) > 10
+
+
+def test_the_final_transcript_still_arrives_after_streaming(server):
+    """The final event closes the existing bubble instead of duplicating it."""
+    seen = []
+    original = server.hub.publish
+    server.hub.publish = lambda name, data, **kw: (
+        seen.append((name, data)), original(name, data, **kw))[1]
+    try:
+        server.ask("Merhaba")
+    finally:
+        server.hub.publish = original
+    final = [data for name, data in seen
+             if name == "transcript" and data.get("role") == "assistant"]
+    assert len(final) == 1
+
+
+def test_the_chunks_join_into_the_http_answer(server):
+    """The panel, HTTP response and stored answer must describe one response."""
+    pieces = []
+    original = server.hub.publish
+
+    def capture(name, data, **kw):
+        if name == "parca":
+            pieces.append(data["text"])
+        return original(name, data, **kw)
+
+    server.hub.publish = capture
+    try:
+        answer, _ = server.ask("Merhaba")
+    finally:
+        server.hub.publish = original
+    assert "".join(pieces) == answer

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Iterator
 
 from .base import LLMProvider, LLMResponse, Message
 from .errors import ErrorType, LLMProviderError
@@ -24,6 +24,7 @@ class FallbackProvider:
         self.fallback_used = False
         self.retry_count = 0
         self.son_kullanim: dict[str, Any] = {}
+        self.son_yanit = LLMResponse()
 
     @property
     def model(self) -> str:
@@ -46,6 +47,24 @@ class FallbackProvider:
     def _usage_from(self, provider: LLMProvider) -> None:
         usage = getattr(provider, "son_kullanim", None)
         self.son_kullanim = dict(usage) if isinstance(usage, dict) else {}
+
+    @property
+    def num_ctx(self) -> int:
+        provider = self.fallback if self.fallback_used else self.primary
+        return int(getattr(provider, "num_ctx", 8192) or 8192)
+
+    def _stream_from(self, provider: LLMProvider, messages: list[Message],
+                     tools: list[dict[str, Any]] | None) -> Iterator[str]:
+        stream = getattr(provider, "chat_stream", None)
+        if stream is None:
+            result = provider.chat(messages, tools=tools)
+            self.son_yanit = result
+            if result.content:
+                yield result.content
+            return
+        yield from stream(messages, tools=tools)
+        result = getattr(provider, "son_yanit", None)
+        self.son_yanit = result if isinstance(result, LLMResponse) else LLMResponse()
 
     def apply_reasoning(self, level: int) -> None:
         for provider in (self.primary, self.fallback):
@@ -92,3 +111,51 @@ class FallbackProvider:
         result = self.fallback.chat(messages, tools=tools)
         self._usage_from(self.fallback)
         return result
+
+    def chat_stream(self, messages: list[Message],
+                    tools: list[dict[str, Any]] | None = None) -> Iterator[str]:
+        """Stream with the same bounded retry and fallback policy as chat()."""
+        self.fallback_used = False
+        self.retry_count = 0
+        self.son_yanit = LLMResponse()
+        self.active_model = str(getattr(self.primary, "model", self.primary.name))
+        if self.circuit_open:
+            raise LLMProviderError(
+                "Ollama bağlantısı geçici olarak devre dışı; yeniden deneme süresi bekleniyor.",
+                kind=ErrorType.SERVER_UNAVAILABLE, retryable=False,
+                fallback_allowed=False, server_available=False,
+            )
+
+        last_error: LLMProviderError | None = None
+        for attempt in range(self.max_retries + 1):
+            emitted = False
+            try:
+                for chunk in self._stream_from(self.primary, messages, tools):
+                    emitted = True
+                    yield chunk
+                self.retry_count = attempt
+                self._usage_from(self.primary)
+                return
+            except LLMProviderError as exc:
+                # Retrying after bytes reached the caller would duplicate the
+                # beginning of the answer.  Surface the error instead.
+                if emitted:
+                    raise
+                last_error = exc
+                if exc.server_available is False:
+                    self._circuit_opened_at = time.monotonic()
+                    raise
+                if not exc.retryable or attempt >= self.max_retries:
+                    break
+
+        assert last_error is not None
+        self.retry_count = self.max_retries if last_error.retryable else 0
+        if not last_error.fallback_allowed:
+            raise last_error
+        if self.same_server and last_error.server_available is False:
+            raise last_error
+
+        self.fallback_used = True
+        self.active_model = str(getattr(self.fallback, "model", self.fallback.name))
+        yield from self._stream_from(self.fallback, messages, tools)
+        self._usage_from(self.fallback)

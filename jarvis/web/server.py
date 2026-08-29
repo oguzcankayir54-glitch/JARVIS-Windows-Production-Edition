@@ -345,7 +345,11 @@ class PanelServer:
         """What this build actually has — so the panel shows no invented data."""
         cfg = getattr(self.agent.llm, "model", None)
         a = getattr(self.agent, "asistan", None) or asistan_bul()
+        kullanim = dict(getattr(self.agent.llm, "son_kullanim", {}) or {})
         return {
+            # A snapshot: a later turn must not mutate metadata already queued
+            # for an SSE client.
+            "llm_kullanim": kullanim,
             # Panel adini ve rengini SUNUCUDAN aliyor: kimlik tek yerde
             # (core/asistan.py) duruyor, HTML'de ikinci bir kopyasi yok.
             # LLM gercekten cevap verebiliyor mu. Panel bunu bir uyari
@@ -720,8 +724,16 @@ class PanelServer:
                 permissions.approver = lambda _tool, risk, _args, _prompt: risk == RiskLevel.HIGH
             try:
                 if speech is None:
-                    answer = self.agent.ask(agent_text)
+                    stream = self.agent.ask_stream(agent_text)
+                    pieces: list[str] = []
+                    for piece in stream:
+                        pieces.append(piece)
+                        self.hub.publish("parca", {"text": piece}, retain=False)
+                    answer = "".join(pieces)
                 else:
+                    # Keep the structured speech contract on ``ask``.  The
+                    # hands-free endpoint returns one combined audio response
+                    # and existing callers monkeypatch/observe this boundary.
                     answer = self.agent.ask(
                         agent_text,
                         original_text=speech.original_text,

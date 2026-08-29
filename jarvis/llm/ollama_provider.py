@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, Iterator
 
 from .base import LLMResponse, Message, ToolCall
 from .errors import ErrorType, LLMProviderError
@@ -69,6 +69,7 @@ class OllamaProvider:
         #: Panelin "context usage" göstergesi buradan besleniyor, ve
         #: taşmayı fark etmenin tek dürüst yolu bu.
         self.son_kullanim: dict[str, Any] = {}
+        self.son_yanit = LLMResponse()
         self._base_temperature = self.temperature
         self._base_top_p = self.top_p
         self._base_num_predict = self.num_predict
@@ -86,10 +87,11 @@ class OllamaProvider:
         """Load the model once before the first user turn."""
         self.chat([Message(role="user", content="Kısa yanıt ver: hazır.")])
 
-    def chat(self, messages: list[Message], tools: list[dict[str, Any]] | None = None) -> LLMResponse:
+    def _govde(self, messages: list[Message], tools, *, akis: bool) -> dict[str, Any]:
+        """Build streaming and plain requests from one set of options."""
         payload: dict[str, Any] = {
             "model": self.model,
-            "stream": False,
+            "stream": akis,
             "think": self.think,
             "keep_alive": self.keep_alive,
             "messages": [self._encode(m) for m in messages],
@@ -106,11 +108,17 @@ class OllamaProvider:
         }
         if tools:
             payload["tools"] = tools
+        return payload
 
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self.host}/api/chat", data=data, headers={"Content-Type": "application/json"}
+    def _istek(self, payload: dict[str, Any]) -> urllib.request.Request:
+        return urllib.request.Request(
+            f"{self.host}/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
         )
+
+    def chat(self, messages: list[Message], tools: list[dict[str, Any]] | None = None) -> LLMResponse:
+        req = self._istek(self._govde(messages, tools, akis=False))
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
@@ -124,12 +132,53 @@ class OllamaProvider:
         calls = self._parse_tool_calls(msg.get("tool_calls"))
         return LLMResponse(content=msg.get("content", "") or "", tool_calls=calls)
 
+    def chat_stream(self, messages: list[Message],
+                    tools: list[dict[str, Any]] | None = None) -> Iterator[str]:
+        """Yield Ollama NDJSON content and retain its final structured result."""
+        self.son_yanit = LLMResponse()
+        self.son_kullanim = {}
+        req = self._istek(self._govde(messages, tools, akis=True))
+        parcalar: list[str] = []
+        cagrilar: list[ToolCall] = []
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                for ham in resp:
+                    satir = ham.decode("utf-8").strip()
+                    if not satir:
+                        continue
+                    try:
+                        veri = json.loads(satir)
+                    except json.JSONDecodeError:
+                        # A partial line must not discard already received text.
+                        continue
+                    msg = veri.get("message") or {}
+                    yeni = msg.get("content") or ""
+                    if yeni:
+                        parcalar.append(yeni)
+                        yield yeni
+                    cagrilar.extend(self._parse_tool_calls(msg.get("tool_calls")))
+                    if veri.get("done"):
+                        self.son_kullanim = self._kullanim(veri)
+        except urllib.error.HTTPError as exc:
+            raise self._http_exception(exc) from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise self._connection_exception(exc) from exc
+
+        self.son_yanit = LLMResponse(
+            content="".join(parcalar), tool_calls=cagrilar
+        )
+
     #: Pencerenin bu oranı aşıldığında taşma yakın sayılıyor.
     #:
     #: %90'da uyarmak geç: bir sonraki tur araç çıktısıyla birlikte gelirse
     #: aradaki payı tek adımda yiyor. %80 fark etmek ile yer kalması
     #: arasındaki denge.
     DOLULUK_ESIGI = 0.80
+    _NS = 1_000_000_000
+    # Reading the prompt for more than half the generation duration is a
+    # measurable prefill bottleneck, commonly caused by changing tool schemas
+    # invalidating Qwen's prompt cache.
+    OKUMA_BASKIN_ORANI = 0.5
 
     def _kullanim(self, body: dict[str, Any]) -> dict[str, Any]:
         """Bu turda gerçekten kaç token okundu ve üretildi.
@@ -141,14 +190,39 @@ class OllamaProvider:
         okunan = int(body.get("prompt_eval_count") or 0)
         uretilen = int(body.get("eval_count") or 0)
         sure_ns = int(body.get("eval_duration") or 0)
+        okuma_ns = int(body.get("prompt_eval_duration") or 0)
+        yukleme_ns = int(body.get("load_duration") or 0)
+        toplam_ns = int(body.get("total_duration") or 0)
         kullanim: dict[str, Any] = {
             "okunan_token": okunan,
             "uretilen_token": uretilen,
             "pencere": self.num_ctx,
             "doluluk": round(okunan / self.num_ctx, 3) if self.num_ctx else 0.0,
         }
+        if okuma_ns > 0:
+            kullanim["okuma_sn"] = round(okuma_ns / self._NS, 2)
+            if okunan > 0:
+                kullanim["okuma_token_sn"] = round(
+                    okunan / (okuma_ns / self._NS), 1
+                )
+        if sure_ns > 0:
+            kullanim["uretim_sn"] = round(sure_ns / self._NS, 2)
+        if toplam_ns > 0:
+            kullanim["toplam_sn"] = round(toplam_ns / self._NS, 2)
+        if yukleme_ns > self._NS // 10:
+            kullanim["model_yukleme_sn"] = round(yukleme_ns / self._NS, 2)
+        if (okuma_ns > 0 and sure_ns > 0
+                and okuma_ns > sure_ns * self.OKUMA_BASKIN_ORANI):
+            kullanim["darbogaz"] = (
+                "Süre ağırlıkla İSTEMİ OKUMAKTA geçiyor "
+                f"({kullanim['okuma_sn']} sn okuma / "
+                f"{kullanim['uretim_sn']} sn üretim). "
+                "Bu genellikle istem önbelleğinin tutmadığı anlamına gelir: "
+                "araç listesi her turda değişirse Qwen'in sistem bloğu da "
+                "değişiyor ve tüm istem yeniden işleniyor."
+            )
         if sure_ns > 0 and uretilen > 0:
-            kullanim["token_sn"] = round(uretilen / (sure_ns / 1_000_000_000), 1)
+            kullanim["token_sn"] = round(uretilen / (sure_ns / self._NS), 1)
         if okunan >= self.num_ctx * self.DOLULUK_ESIGI:
             kullanim["uyari"] = (
                 f"Bağlam penceresi dolmak üzere: {okunan}/{self.num_ctx} token. "

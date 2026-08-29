@@ -7,6 +7,7 @@ actually doing, and the telemetry is read from this machine.
 from __future__ import annotations
 
 import argparse
+import atexit
 import os
 from pathlib import Path
 import secrets
@@ -23,8 +24,10 @@ from ..vision.detect import build_vision
 from ..vision.objects import build_object_vision
 from ..vision.ocr import build_ocr
 from ..vision.identity import build_face_recognizer
+from ..vision.screenshot import build_screenshot
 from ..voice.stt import build_stt
-from ..voice.tts import tts_from_config
+from ..voice.tts import NullTTS, TTSError, tts_from_config
+from ..diagnostics.monitor import MonitorConfig
 from .server import PanelServer, sesli_taban
 
 
@@ -108,9 +111,23 @@ def main(argv: list[str] | None = None) -> int:
     # okuduğu için HIGH/CRITICAL bir işlem tarayıcıyı sonsuza kadar bekletirdi.
     agent = build_agent(cfg, approver=panel_approver)
     tts = tts_from_config(cfg)
+    close_tts = getattr(tts, "close", None)
+    if callable(close_tts):
+        atexit.register(close_tts)
     if args.sessiz:
-        from ..voice.tts import NullTTS
         tts = NullTTS()
+    elif (getattr(tts, "name", "") == "xtts"
+          and getattr(cfg, "xtts_ready_before_listen", True)):
+        # The user explicitly prioritised conversational latency. Pay the
+        # model-load cost before the panel accepts microphone input, never
+        # after an answer is already waiting to be spoken.
+        print("[ses] Craig modeli hazırlanıyor…", flush=True)
+        try:
+            tts.wait_ready()
+            print("[ses] Craig hazır; model GPU belleğinde sıcak.", flush=True)
+        except TTSError as exc:
+            print(f"[ses] Craig hazırlanamadı: {exc}", flush=True)
+            tts = NullTTS(str(exc))
     stt = build_stt(
         enabled=cfg.stt_enabled and not args.mikrofonsuz,
         model_size=cfg.stt_model, device=cfg.stt_device,
@@ -129,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         enabled=cfg.face_recognition_enabled,
         path=cfg.data_dir / "face_templates.json",
     )
+    screenshot = build_screenshot(enabled=cfg.screenshot_enabled)
     _llm_eksik = ""
     if cfg.llm_provider == "ollama":
         from ..llm.ollama_provider import ollama_hazir
@@ -160,12 +178,30 @@ def main(argv: list[str] | None = None) -> int:
                          token=token, stt=stt, vision=vision,
                          object_vision=object_vision, ocr=ocr,
                          face_recognizer=face_recognizer,
+                         screenshot=screenshot,
                          sesli_onay_tabani=sesli_taban(cfg.sesli_taban),
                          rag_auto_paths=cfg.rag_auto_paths,
                          rag_sync_interval=cfg.rag_sync_interval,
                          reminder_interval=cfg.reminder_interval,
                          acceptance_report=acceptance_report,
-                         llm_uyari=_llm_eksik)
+                         llm_uyari=_llm_eksik,
+                         monitor_config=MonitorConfig(
+                             enabled=cfg.monitor_enabled,
+                             expect_tts=cfg.voice_enabled and not args.sessiz,
+                             expect_stt=cfg.stt_enabled and not args.mikrofonsuz,
+                             interval=cfg.monitor_interval,
+                             health_interval=cfg.monitor_health_interval,
+                             cooldown=cfg.monitor_cooldown,
+                             recovery_samples=cfg.monitor_recovery_samples,
+                             ram_warning=cfg.monitor_ram_warning,
+                             ram_critical=cfg.monitor_ram_critical,
+                             disk_warning=cfg.monitor_disk_warning,
+                             disk_critical=cfg.monitor_disk_critical,
+                             gpu_temp_warning=cfg.monitor_gpu_temp_warning,
+                             gpu_temp_critical=cfg.monitor_gpu_temp_critical,
+                             vram_warning=cfg.monitor_vram_warning,
+                             vram_critical=cfg.monitor_vram_critical,
+                         ))
 
     url = f"http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{args.port}"
     print("=" * 58)

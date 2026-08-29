@@ -19,7 +19,7 @@ include = ["jarvis*"]
 [project]
 name = "jarvis"
 version = "2.0.1"
-description = "J.A.R.V.I.S. 2.0.1 — ElevenLabs-first personal AI assistant"
+description = "J.A.R.V.I.S. 2.0.1 — low-latency local-first personal AI assistant"
 requires-python = ">=3.10"
 dependencies = [
     "psutil>=5.9",
@@ -47,6 +47,15 @@ bilgi = ["numpy>=1.24"]
 # (Ölçüm yöntemi: jarvis/voice/soyleyis.py)
 ses = ["edge-tts>=7.0"]
 ses-yerel = ["piper-tts>=1.7"]
+# Seçilen Craig dengeli sesi. Transformers 5, XTTS'nin kullandığı yardımcıyı
+# kaldırdığı için üst sınır bilinçli; model süreç boyunca bellekte tutulur.
+ses-xtts = [
+    "coqui-tts==0.27.5",
+    "torch==2.6.0",
+    "torchaudio==2.6.0",
+    "transformers>=4.57,<5",
+    "soundfile>=0.12",
+]
 # YOLO nesne algılama. Model ağırlığı ilk kullanımda ayrıca indirilir.
 gorsel = ["ultralytics>=8.3", "opencv-python-headless>=4.8,<5"]
 # Explicit opt-in biometric identity support; raw frames are never persisted.

@@ -82,7 +82,7 @@ def test_choosing_elevenlabs_without_a_key_names_what_is_missing():
 def test_an_unknown_provider_lists_the_valid_ones():
     saglayici = build_tts(None, None, "m", provider="saçma")
     assert saglayici.available is False
-    for ad in ("edge", "piper", "elevenlabs"):
+    for ad in ("xtts", "edge", "piper", "elevenlabs"):
         assert ad in saglayici.reason
 
 

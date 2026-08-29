@@ -101,11 +101,11 @@ class NullTTS:
 
     def synthesize(self, text: str) -> Iterator[bytes]:
         raise TTSError(self.reason or (
-            "Ses yapılandırılmamış. J.A.R.V.I.S. 2.0 için ana motor ElevenLabs:\n"
-            "    JARVIS_TTS_PROVIDER=elevenlabs\n"
-            "    ELEVENLABS_API_KEY=...\n"
-            "    ELEVENLABS_VOICE_ID=...\n"
-            "İsterseniz çevrimdışı yedek olarak Piper seçebilirsiniz."
+            "Ses yapılandırılmamış. Yerel Craig sesi için:\n"
+            "    pip install -e \".[ses-xtts]\"\n"
+            "    JARVIS_TTS_PROVIDER=xtts\n"
+            "ElevenLabs yedeği için JARVIS_TTS_PROVIDER=elevenlabs, "
+            "ELEVENLABS_API_KEY ve ELEVENLABS_VOICE_ID ayarlanabilir."
         ))
 
 
@@ -405,7 +405,11 @@ def build_tts(api_key: str | None, voice_id: str | None, model_id: str,
               language_code: str = "tr", stability: float = 0.50,
               similarity_boost: float = 0.75, style: float = 0.0,
               speaker_boost: bool = True, timeout: float = 30.0,
-              max_retries: int = 2) -> TTSProvider:
+              max_retries: int = 2, xtts_speaker: str = "Craig Gutsy",
+              xtts_speed: float = 1.04, xtts_device: str = "auto",
+              xtts_preload: bool = True, xtts_cache_size: int = 32,
+              xtts_model: str = "tts_models/multilingual/multi-dataset/xtts_v2",
+              ) -> TTSProvider:
     """Pick a speech provider.
 
     ``provider`` decides explicitly. Left empty the order is: a configured
@@ -421,6 +425,17 @@ def build_tts(api_key: str | None, voice_id: str | None, model_id: str,
 
     if secim in ("yok", "kapali", "none", "off"):
         return NullTTS("Ses kapalı (JARVIS_TTS_PROVIDER=yok).")
+
+    if secim in ("xtts", "craig", "yerel-xtts"):
+        from .xtts import XTTSTTS, xtts_hazir
+        eksik = xtts_hazir()
+        if eksik:
+            return NullTTS(eksik)
+        return XTTSTTS(
+            speaker=xtts_speaker, speed=xtts_speed, device=xtts_device,
+            preload=xtts_preload, cache_size=xtts_cache_size,
+            model_name=xtts_model,
+        )
 
     if secim in ("edge", "microsoft", "edge-tts"):
         from .edge import EdgeTTS, edge_hazir
@@ -466,7 +481,7 @@ def build_tts(api_key: str | None, voice_id: str | None, model_id: str,
         )
 
     return NullTTS(f"Bilinmeyen ses sağlayıcısı: {provider}. "
-                   "Seçenekler: edge | piper | elevenlabs | yok")
+                   "Seçenekler: xtts | edge | piper | elevenlabs | yok")
 
 
 def tts_from_config(cfg) -> TTSProvider:
@@ -491,4 +506,11 @@ def tts_from_config(cfg) -> TTSProvider:
         speaker_boost=getattr(cfg, "elevenlabs_speaker_boost", True),
         timeout=getattr(cfg, "elevenlabs_timeout", 30.0),
         max_retries=getattr(cfg, "elevenlabs_max_retries", 2),
+        xtts_speaker=getattr(cfg, "xtts_speaker", "Craig Gutsy"),
+        xtts_speed=getattr(cfg, "xtts_speed", 1.04),
+        xtts_device=getattr(cfg, "xtts_device", "auto"),
+        xtts_preload=getattr(cfg, "xtts_preload", True),
+        xtts_cache_size=getattr(cfg, "xtts_cache_size", 32),
+        xtts_model=getattr(
+            cfg, "xtts_model", "tts_models/multilingual/multi-dataset/xtts_v2"),
     )

@@ -17,6 +17,20 @@ _ENV_KEYS = [
     "ELEVENLABS_OUTPUT_FORMAT", "ELEVENLABS_LANGUAGE_CODE",
     "ELEVENLABS_STABILITY", "ELEVENLABS_SIMILARITY_BOOST", "ELEVENLABS_STYLE",
     "ELEVENLABS_SPEAKER_BOOST", "ELEVENLABS_TIMEOUT", "ELEVENLABS_MAX_RETRIES",
+    "JARVIS_TTS_PROVIDER", "JARVIS_XTTS_SPEAKER", "JARVIS_XTTS_SPEED",
+    "JARVIS_XTTS_DEVICE", "JARVIS_XTTS_PRELOAD", "JARVIS_XTTS_READY_BEFORE_LISTEN",
+    "JARVIS_XTTS_CACHE_SIZE",
+    "JARVIS_XTTS_MODEL",
+    "JARVIS_MONITOR_ENABLED", "JARVIS_MONITOR_INTERVAL",
+    "JARVIS_MONITOR_HEALTH_INTERVAL", "JARVIS_MONITOR_COOLDOWN",
+    "JARVIS_MONITOR_RECOVERY_SAMPLES", "JARVIS_MONITOR_RAM_WARNING",
+    "JARVIS_MONITOR_RAM_CRITICAL", "JARVIS_MONITOR_DISK_WARNING",
+    "JARVIS_MONITOR_DISK_CRITICAL", "JARVIS_MONITOR_GPU_TEMP_WARNING",
+    "JARVIS_MONITOR_GPU_TEMP_CRITICAL", "JARVIS_MONITOR_VRAM_WARNING",
+    "JARVIS_MONITOR_VRAM_CRITICAL",
+    "JARVIS_SCREENSHOT_ENABLED",
+    "JARVIS_APPROVAL_SOUND_ENABLED",
+    "JARVIS_MULTI_AGENT_ENABLED", "JARVIS_MULTI_AGENT_MAX_DELEGATIONS",
     "JARVIS_LLM_PROVIDER", "JARVIS_OLLAMA_MODEL", "JARVIS_NON_INTERACTIVE",
     "JARVIS_MAX_AGENT_STEPS", "JARVIS_DATA_DIR",
     "JARVIS_TEMPERATURE", "JARVIS_TOP_P", "JARVIS_REPEAT_PENALTY",
@@ -57,6 +71,10 @@ def test_defaults_without_dotenv(clean_env):
     cfg = load_config()
     assert cfg.llm_provider == "mock"
     assert cfg.elevenlabs_api_key is None
+    assert cfg.screenshot_enabled is False
+    assert cfg.approval_sound_enabled is True
+    assert cfg.multi_agent_enabled is False
+    assert cfg.multi_agent_max_delegations == 1
     assert not cfg.voice_configured
     assert cfg.elevenlabs_model_id == "eleven_flash_v2_5"
     assert cfg.elevenlabs_output_format == "mp3_44100_128"
@@ -64,6 +82,14 @@ def test_defaults_without_dotenv(clean_env):
     assert cfg.elevenlabs_stability == 0.50
     assert cfg.elevenlabs_similarity_boost == 0.75
     assert cfg.elevenlabs_speaker_boost is True
+    assert cfg.tts_provider == "xtts"
+    assert cfg.xtts_speaker == "Craig Gutsy"
+    assert cfg.xtts_speed == 1.04
+    assert cfg.xtts_preload is True
+    assert cfg.xtts_ready_before_listen is True
+    assert cfg.monitor_enabled is True
+    assert cfg.monitor_ram_warning == 85.0
+    assert cfg.monitor_ram_critical == 95.0
 
 
 def test_dotenv_ignores_comments_and_quotes(clean_env):

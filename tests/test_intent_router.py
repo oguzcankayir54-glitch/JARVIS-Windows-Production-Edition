@@ -68,7 +68,10 @@ def test_speech_metadata_survives_intent_routing():
     assert got.confidence <= 0.94
 
 
-@pytest.mark.parametrize("wake", ["Jarvis", "Jarvis?", "J.A.R.V.I.S."])
+@pytest.mark.parametrize("wake", [
+    "Jarvis", "Jarvis?", "J.A.R.V.I.S.",
+    "Jarvis aktif misin?", "J.A.R.V.I.S. aktif mi?",
+])
 def test_bare_wake_word_is_level_zero(wake):
     got = IntentRouter().route(wake)
     assert got.intent is Intent.CHAT

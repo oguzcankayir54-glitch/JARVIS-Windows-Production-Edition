@@ -357,8 +357,44 @@ def _cmd_check_piper(cfg) -> int:
     return 0
 
 
+def _cmd_check_xtts(cfg) -> int:
+    """Load Craig once and measure a real local synthesis."""
+    import time
+    from .xtts import XTTSTTS, xtts_hazir
+
+    print("XTTS yapılandırması  (yerel · Craig dengeli · kotasız)")
+    print(f"  Ses       : {cfg.xtts_speaker}")
+    print(f"  Hız       : {cfg.xtts_speed}")
+    print(f"  Aygıt     : {cfg.xtts_device}")
+    print(f"  Ön yükleme: {'açık' if cfg.xtts_preload else 'kapalı'}")
+    eksik = xtts_hazir()
+    if eksik:
+        print(f"\n✗ {eksik}")
+        return 1
+
+    print("\n  Model yükleniyor ve deneme sesi üretiliyor…", flush=True)
+    tts = XTTSTTS(
+        speaker=cfg.xtts_speaker, speed=cfg.xtts_speed,
+        device=cfg.xtts_device, cache_size=cfg.xtts_cache_size,
+        preload=False, model_name=cfg.xtts_model,
+    )
+    baslangic = time.perf_counter()
+    try:
+        ham = b"".join(tts.synthesize("Efendim, hoş geldiniz."))
+    except TTSError as exc:
+        print(f"\n✗ {exc}")
+        return 1
+    sure = time.perf_counter() - baslangic
+    print(f"\n✓ Çalışıyor — {len(ham)} bayt WAV, {sure:.2f} saniye.")
+    print("✓ Model bellekte sıcak tutulur; sonraki cevaplarda yeniden yüklenmez.")
+    print("✓ Ses ve metin bu bilgisayardan çıkmaz; kota veya kredi yoktur.")
+    return 0
+
+
 def _cmd_check(cfg) -> int:
     saglayici = _aktif_saglayici(cfg)
+    if saglayici in ("xtts", "craig", "yerel-xtts"):
+        return _cmd_check_xtts(cfg)
     if saglayici == "piper":
         return _cmd_check_piper(cfg)
     if saglayici in ("edge", "microsoft", "edge-tts"):
@@ -369,7 +405,7 @@ def _cmd_check(cfg) -> int:
         return 0
     if saglayici not in ("elevenlabs", "11labs"):
         print(f"✗ Bilinmeyen sağlayıcı: {cfg.tts_provider}")
-        print("  Seçenekler: edge | piper | elevenlabs | yok")
+        print("  Seçenekler: xtts | edge | piper | elevenlabs | yok")
         return 1
     print("ElevenLabs yapılandırması")
     print(f"  API anahtarı : {cfg.masked_key()}")
@@ -475,7 +511,8 @@ def _cmd_speak(cfg, text: str, save_to: str | None) -> int:
             print(f"✓ Kaydedildi: {path} ({path.stat().st_size} bayt)")
             return 0
         if not play_stream(tts.synthesize(text)):
-            fallback = Path.cwd() / "jarvis-ses.mp3"
+            uzanti = ".wav" if getattr(tts, "mime", "") == "audio/wav" else ".mp3"
+            fallback = Path.cwd() / f"jarvis-ses{uzanti}"
             save_stream(tts.synthesize(text), fallback)
             print(f"! Ses oynatıcı bulunamadı; dosyaya kaydedildi: {fallback}")
             print("  Oynatıcı için:  sudo apt install ffmpeg")
@@ -485,11 +522,15 @@ def _cmd_speak(cfg, text: str, save_to: str | None) -> int:
     except TTSError as exc:
         print(f"✗ {exc}")
         return 1
+    finally:
+        close_tts = getattr(tts, "close", None)
+        if callable(close_tts):
+            close_tts()
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="jarvis-ses", description="ElevenLabs ses ayarlarını doğrula ve metni seslendir."
+        prog="jarvis-ses", description="Yerel veya bulut ses ayarlarını doğrula ve metni seslendir."
     )
     parser.add_argument("metin", nargs="?", help="Seslendirilecek metin")
     parser.add_argument("--kontrol", action="store_true", help="Anahtar ve Voice ID'yi doğrula")

@@ -9,6 +9,7 @@ from .config import Config, load_config
 from .core.agent import Agent
 from .core.observability import RequestTraceLog
 from .core.state import StateMachine
+from .core.multi_agent import Supervisor
 from .llm.base import LLMProvider
 from .llm.mock_provider import MockProvider
 from .memory.cases import CaseStore
@@ -99,7 +100,14 @@ def build_agent(
         cfg.request_trace_log_path, include_user_text=cfg.trace_user_text,
         max_bytes=cfg.log_max_bytes, backup_count=cfg.log_backup_count,
     )
-    permissions = PermissionManager(audit=audit, approver=approver, non_interactive=cfg.non_interactive)
+    notifier = None
+    if cfg.approval_sound_enabled:
+        from .security.approval_notice import play_approval_sound
+        notifier = play_approval_sound
+    permissions = PermissionManager(
+        audit=audit, approver=approver, non_interactive=cfg.non_interactive,
+        notifier=notifier,
+    )
 
     store = memory if memory is not None else MemoryStore(cfg.memory_db_path)
     # Kimlik BOŞSA dosyadan doldur. "Beni tanımıyor" üç kez geri geldi ve her
@@ -149,4 +157,8 @@ def build_agent(
         tool_result_max_chars=cfg.tool_result_max_chars,
         asistan=asistan_bul(), memory=store, cases=case_store, agenda=agenda_store, knowledge=kb,
         machine=describe_machine(), trace_log=trace_log,
+        supervisor=Supervisor(
+            enabled=cfg.multi_agent_enabled,
+            max_delegations=cfg.multi_agent_max_delegations,
+        ),
     )

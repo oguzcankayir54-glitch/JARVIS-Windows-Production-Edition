@@ -42,6 +42,7 @@ class Decision:
 # An approver receives (tool_name, risk, args, prompt_text) and returns True
 # to allow. Defaults to a terminal prompt; tests inject their own.
 Approver = Callable[[str, RiskLevel, dict[str, Any], str], bool]
+ApprovalNotifier = Callable[[], None]
 
 
 def _deny_approver(tool: str, risk: RiskLevel, args: dict[str, Any], prompt: str) -> bool:
@@ -92,6 +93,7 @@ class PermissionManager:
         approver: Optional[Approver] = None,
         non_interactive: bool = False,
         taban: RiskLevel = VARSAYILAN_TABAN,
+        notifier: ApprovalNotifier | None = None,
     ) -> None:
         self.audit = audit or AuditLog()
         if approver is not None:
@@ -99,6 +101,7 @@ class PermissionManager:
         else:
             self.approver = _deny_approver if non_interactive else terminal_approver
         self.taban = taban
+        self.notifier = notifier
 
     def yukselt(self, taban: RiskLevel) -> "_TabanKapsami":
         """Temporarily require approval for more than usual.
@@ -122,6 +125,8 @@ class PermissionManager:
             return Decision(True, "auto-allowed")
 
         prompt = prompt or f"'{tool}' {risk.label} seviyesinde bir işlem."
+        if self.notifier is not None:
+            self.notifier()
         approved = bool(self.approver(tool, risk, args, prompt))
         decision = "approved" if approved else "denied"
         self.audit.record(AuditEntry(tool=tool, risk=risk.label, decision=decision, args=args, detail=prompt))

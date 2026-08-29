@@ -27,8 +27,9 @@ def test_panel_exposes_clickable_command_examples():
                         memory=MemoryStore(":memory:"))
     data = PanelServer(agent, port=0).modul_verisi()["komutlar"]
     assert data["durum"] == "hazir"
-    assert len(data["satirlar"]) == len(COMMAND_EXAMPLES)
+    assert len(data["satirlar"]) > len(COMMAND_EXAMPLES)
     assert all(row["komut"] == row["deger"] for row in data["satirlar"])
+    assert any(row.get("bakim") for row in data["satirlar"])
 
 
 def test_advertised_action_examples_reach_the_expected_intents():

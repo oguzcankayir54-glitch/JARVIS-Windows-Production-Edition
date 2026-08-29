@@ -33,12 +33,16 @@ test ve alternatif kurulum amacıyla korunmaktadır.
 - SSE üzerinden canlı durum ve telemetri güncellemeleri
 - Metin sohbeti, mikrofon, seslendirme ve Vision bölümleri
 - CPU, RAM, disk, GPU ve sistem bilgilerinin gerçek zamanlı gösterimi
+- Gerçek health check sonuçlarından hesaplanan sistem sağlık puanı
+- Config eşikleri, cooldown ve recovery ile gürültü kontrollü proaktif takip
+- Platforma duyarlı bakım komutları; güvenli komutlarda sınırlı Run desteği
 - Windows masaüstü başlatıcısı ve tek örnek çalışma kontrolü
 - Yerel kullanımda `127.0.0.1`; ağ erişiminde zorunlu erişim jetonu
 
 ### Türkçe ses ve mikrofon
 
-- **ElevenLabs:** doğal bulut sesi; `eleven_flash_v2_5` ve `eleven_v3`
+- **XTTS-v2 / Craig:** ana yerel ses; açılışta sıcak yükleme ve RAM önbelleği
+- **ElevenLabs:** tek ayarla geri dönülebilen doğal bulut yedeği
 - **Edge TTS:** ücretsiz çevrimiçi Türkçe ses
 - **Piper:** tamamen yerel ve çevrimdışı yedek ses
 - **faster-whisper:** yerel Türkçe konuşma tanıma
@@ -152,7 +156,12 @@ JARVIS_OLLAMA_FALLBACK_MODEL=qwen2.5:7b-instruct
 JARVIS_OLLAMA_NUM_CTX=8192
 
 JARVIS_VOICE_ENABLED=true
-JARVIS_TTS_PROVIDER=elevenlabs
+JARVIS_TTS_PROVIDER=xtts
+COQUI_TOS_AGREED=1
+JARVIS_XTTS_SPEAKER=Craig Gutsy
+JARVIS_XTTS_SPEED=1.04
+JARVIS_XTTS_PRELOAD=true
+JARVIS_XTTS_READY_BEFORE_LISTEN=true
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
 
@@ -213,7 +222,7 @@ pytest -q
 
 Mevcut doğrulama tabanı:
 
-- 1094 otomatik test
+- 1132 otomatik test
 - Python kaynak derleme kontrolü
 - Windows kurulum ve başlatıcı regresyon testleri
 - Paket/ZIP içinde sır bulunmadığını doğrulayan testler
@@ -232,7 +241,7 @@ jarvis/
 ├── rag/        Belge indeksleme ve hibrit arama
 ├── security/   İzin yöneticisi ve audit kayıtları
 ├── tools/      Sistem, dosya, terminal, Git, hafıza ve uygulama araçları
-├── voice/      ElevenLabs, Edge, Piper ve faster-whisper
+├── voice/      XTTS, ElevenLabs, Edge, Piper ve faster-whisper
 ├── vision/     Yüz, nesne, OCR ve kimlik analizi
 ├── internet/   Güvenli arama, sayfa getirme ve SSRF koruması
 └── web/        Neural Core panel sunucusu ve SSE
@@ -251,7 +260,8 @@ docs/           Mimari, donanım ve kullanım belgeleri
 - Mikrofon çözümlemesi faster-whisper ile yerel yapılır
 - Kamera kareleri analizden sonra saklanmaz
 - Ollama ve embedding modelleri yerelde çalışır
-- ElevenLabs ve Edge seçilirse seslendirilecek metin ilgili çevrimiçi hizmete gider
+- XTTS seçildiğinde ses ve metin yerel kalır; ElevenLabs veya Edge seçilirse
+  seslendirilecek metin ilgili çevrimiçi hizmete gider
 - Müşteri veya servis verilerini buluta göndermeden önce veri politikanızı belirleyin
 
 ## Mevcut sınırlamalar

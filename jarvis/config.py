@@ -108,6 +108,25 @@ class Config:
 
     profile: str = field(default_factory=_env("JARVIS_PROFILE", "custom"))
 
+    # --- proactive monitoring (Aşama 12) ---
+    monitor_enabled: bool = field(default_factory=lambda: _bool("JARVIS_MONITOR_ENABLED", True))
+    monitor_interval: float = field(
+        default_factory=lambda: max(4.0, _float("JARVIS_MONITOR_INTERVAL", 15.0)))
+    monitor_health_interval: float = field(
+        default_factory=lambda: max(15.0, _float("JARVIS_MONITOR_HEALTH_INTERVAL", 60.0)))
+    monitor_cooldown: float = field(
+        default_factory=lambda: max(30.0, _float("JARVIS_MONITOR_COOLDOWN", 300.0)))
+    monitor_recovery_samples: int = field(
+        default_factory=lambda: max(1, int(_float("JARVIS_MONITOR_RECOVERY_SAMPLES", 2))))
+    monitor_ram_warning: float = field(default_factory=lambda: _float("JARVIS_MONITOR_RAM_WARNING", 85.0))
+    monitor_ram_critical: float = field(default_factory=lambda: _float("JARVIS_MONITOR_RAM_CRITICAL", 95.0))
+    monitor_disk_warning: float = field(default_factory=lambda: _float("JARVIS_MONITOR_DISK_WARNING", 90.0))
+    monitor_disk_critical: float = field(default_factory=lambda: _float("JARVIS_MONITOR_DISK_CRITICAL", 97.0))
+    monitor_gpu_temp_warning: float = field(default_factory=lambda: _float("JARVIS_MONITOR_GPU_TEMP_WARNING", 80.0))
+    monitor_gpu_temp_critical: float = field(default_factory=lambda: _float("JARVIS_MONITOR_GPU_TEMP_CRITICAL", 90.0))
+    monitor_vram_warning: float = field(default_factory=lambda: _float("JARVIS_MONITOR_VRAM_WARNING", 85.0))
+    monitor_vram_critical: float = field(default_factory=lambda: _float("JARVIS_MONITOR_VRAM_CRITICAL", 95.0))
+
     # --- paths ---
     data_dir: Path = field(default_factory=lambda: Path(
         _oku("JARVIS_DATA_DIR") or asistan_bul().veri_klasoru).expanduser())
@@ -161,12 +180,26 @@ class Config:
     # düşürüyor. Doğal hız, doğru okunuşla birlikte (bkz. soyleyis.py).
     elevenlabs_speed: float = field(default_factory=lambda: _float("ELEVENLABS_SPEED", 1.0))
     voice_enabled: bool = field(default_factory=lambda: _bool("JARVIS_VOICE_ENABLED", False))
-    # edge | piper | elevenlabs | yok. Boş bırakılırsa sıra: ElevenLabs
+    # xtts | edge | piper | elevenlabs | yok. Craig XTTS yerel ana sesidir.
     # anahtarı varsa o, yoksa Edge, o da yoksa Piper.
     #   edge       — ücretsiz, anahtarsız, en anlaşılır Türkçe; ama çevrimiçi
     #   piper      — ücretsiz ve tamamen yerel; belirgin biçimde daha bozuk
     #   elevenlabs — en iyi, ama karakter başına ücretli
-    tts_provider: str = field(default_factory=_env("JARVIS_TTS_PROVIDER", "elevenlabs"))
+    tts_provider: str = field(default_factory=_env("JARVIS_TTS_PROVIDER", "xtts"))
+    # XTTS modeli uygulama açılırken arka planda bir kez yüklenir. Böylece ilk
+    # cevap geldiğinde ağırlık yükleme gecikmesi konuşmaya eklenmez.
+    xtts_speaker: str = field(default_factory=_env("JARVIS_XTTS_SPEAKER", "Craig Gutsy"))
+    xtts_speed: float = field(default_factory=lambda: _float("JARVIS_XTTS_SPEED", 1.04))
+    xtts_device: str = field(default_factory=_env("JARVIS_XTTS_DEVICE", "auto"))
+    xtts_preload: bool = field(default_factory=lambda: _bool("JARVIS_XTTS_PRELOAD", True))
+    # Panel, mikrofonu kabul etmeden önce modelin tamamen sıcak olmasını bekler.
+    # Açılış uzar; konuşma sırasındaki 20+ saniyelik soğuk yük tamamen kalkar.
+    xtts_ready_before_listen: bool = field(
+        default_factory=lambda: _bool("JARVIS_XTTS_READY_BEFORE_LISTEN", True))
+    xtts_cache_size: int = field(
+        default_factory=lambda: max(0, int(_float("JARVIS_XTTS_CACHE_SIZE", 32))))
+    xtts_model: str = field(default_factory=_env(
+        "JARVIS_XTTS_MODEL", "tts_models/multilingual/multi-dataset/xtts_v2"))
     #: Edge sesi. Boş bırakılırsa kimlikteki varsayılan (bkz. asistan.py).
     edge_voice: str = field(
         default_factory=lambda: _oku("JARVIS_EDGE_VOICE") or asistan_bul().ses)
@@ -227,6 +260,13 @@ class Config:
     object_vision_enabled: bool = field(default_factory=lambda: _bool("JARVIS_OBJECT_VISION_ENABLED", False))
     ocr_enabled: bool = field(default_factory=lambda: _bool("JARVIS_OCR_ENABLED", False))
     face_recognition_enabled: bool = field(default_factory=lambda: _bool("JARVIS_FACE_RECOGNITION_ENABLED", False))
+    screenshot_enabled: bool = field(default_factory=lambda: _bool("JARVIS_SCREENSHOT_ENABLED", False))
+    approval_sound_enabled: bool = field(default_factory=lambda: _bool("JARVIS_APPROVAL_SOUND_ENABLED", True))
+
+    # --- bounded specialist roles (Stage 14) ---
+    multi_agent_enabled: bool = field(default_factory=lambda: _bool("JARVIS_MULTI_AGENT_ENABLED", False))
+    multi_agent_max_delegations: int = field(
+        default_factory=lambda: max(0, min(1, int(_float("JARVIS_MULTI_AGENT_MAX_DELEGATIONS", 1)))))
 
     # --- microphone (local speech-to-text) ---
     stt_enabled: bool = field(default_factory=lambda: _bool("JARVIS_STT_ENABLED", True))

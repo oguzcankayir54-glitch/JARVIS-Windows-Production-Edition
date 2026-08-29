@@ -37,17 +37,24 @@ from typing import Any
 import psutil
 
 from ..core.agent import Agent
+from ..core.events import Event
 from ..core.state import JarvisState
 from ..rag.index import RagError
 from ..core.asistan import asistan_bul
 from ..security.permissions import RiskLevel
 from ..vision.detect import MAX_FRAME_BYTES, VisionError, build_vision
 from ..core.command_guide import panel_rows
+from ..core.maintenance_commands import command_catalog, run_maintenance
 from ..core.custom_commands import CustomCommandStore
 from ..diagnostics import DiagnosticEngine, DiagnosticError
+from ..diagnostics.health import collect_health
+from ..diagnostics.monitor import MonitorConfig, ProactiveMonitor
 from ..vision.objects import build_object_vision
 from ..vision.ocr import build_ocr
 from ..vision.identity import build_face_recognizer
+from ..vision.pipeline import VisionPipeline
+from ..vision.screenshot import build_screenshot
+from ..tools.vision_tools import register_vision_tools
 from ..voice.stt import MAX_AUDIO_BYTES, STTError, build_stt
 from ..voice.normalization import SpeechNormalization, SpeechNormalizer
 from ..voice.tts import NullTTS, TTSError
@@ -197,11 +204,13 @@ class PanelServer:
                  tts=None, token: str | None = None, stt=None, vision=None,
                  object_vision=None, ocr=None,
                  face_recognizer=None,
+                 screenshot=None, vision_pipeline: VisionPipeline | None = None,
                  custom_commands: CustomCommandStore | None = None,
                  sesli_onay_tabani: RiskLevel = RiskLevel.MEDIUM,
                  rag_auto_paths=(), rag_sync_interval: float = 60.0,
                  llm_uyari: str = "", reminder_interval: float = 30.0,
-                 acceptance_report=None) -> None:
+                 acceptance_report=None,
+                 monitor_config: MonitorConfig | None = None) -> None:
         self.agent = agent
         self.host = host
         self.port = port
@@ -217,6 +226,15 @@ class PanelServer:
         self.object_vision = object_vision if object_vision is not None else build_object_vision(False)
         self.ocr = ocr if ocr is not None else build_ocr(False)
         self.face_recognizer = face_recognizer if face_recognizer is not None else build_face_recognizer(False)
+        self.screenshot = screenshot if screenshot is not None else build_screenshot(False)
+        self.vision_pipeline = vision_pipeline or VisionPipeline(
+            faces=self.vision, objects=self.object_vision, ocr=self.ocr,
+            identity=self.face_recognizer, screenshot=self.screenshot,
+            state=agent.state, events=agent.events,
+        )
+        if self.screenshot.available:
+            register_vision_tools(agent.registry, self.vision_pipeline)
+            agent.response_engine.tool_names.add("masaustu_analiz")
         # An access token is required whenever the panel is reachable beyond
         # this machine: it can run terminal commands, so anyone who can open
         # the page can drive the host. Empty token = no check (localhost only).
@@ -238,6 +256,15 @@ class PanelServer:
         self._speech_lock = threading.Lock()
         self._httpd: ThreadingHTTPServer | None = None
         self._stop = threading.Event()
+        self._background_threads: list[threading.Thread] = []
+        self._health_lock = threading.Lock()
+        self._health_cache: dict[str, Any] | None = None
+        self._health_cached_at = 0.0
+        self._command_lock = threading.Lock()
+        self._command_results: dict[str, dict[str, Any]] = {}
+        self.monitor = ProactiveMonitor(
+            agent.events, monitor_config or MonitorConfig(enabled=False))
+        self._last_resource_monitor = 0.0
         self.rag_auto_paths = tuple(Path(p).expanduser() for p in rag_auto_paths)
         self.rag_sync_interval = max(0.05, float(rag_sync_interval))
         self._rag_sync_lock = threading.Lock()
@@ -247,10 +274,54 @@ class PanelServer:
             "eklenen": 0, "guncellenen": 0, "silinen": 0,
         }
 
-        agent.state.subscribe(self._on_state)
+        self._state_unsubscribe = agent.state.subscribe(self._on_state)
+        self._event_unsubscribe = agent.events.subscribe("*", self._on_core_event)
         self.hub.publish("state", {"state": agent.state.state.value,
                                    "label": agent.state.state.label_tr})
         self.hub.publish("meta", self._meta())
+
+    def health_report(self, *, refresh: bool = False) -> dict[str, Any]:
+        """Return a measured report; avoid repeating heavy probes on every paint."""
+        with self._health_lock:
+            if (not refresh and self._health_cache is not None
+                    and time.time() - self._health_cached_at < 15.0):
+                return self._health_cache
+            report = collect_health(self.agent, tts=self.tts, stt=self.stt)
+            self._health_cache = report
+            self._health_cached_at = time.time()
+        self.agent.events.publish(
+            "system.health", {"score": report["score"], "status": report["status"]},
+            source="health",
+        )
+        return report
+
+    def maintenance_rows(self) -> list[dict[str, Any]]:
+        with self._command_lock:
+            results = dict(self._command_results)
+        rows = []
+        for item in command_catalog():
+            row = item.as_dict()
+            row.update({"ad": "Bakım", "deger": item.command,
+                        "aciklama": item.label, "komut": item.command,
+                        "bakim": "1", "last_result": results.get(item.id)})
+            rows.append(row)
+        return rows
+
+    def run_maintenance(self, command_id: str) -> dict[str, Any]:
+        item = next((x for x in command_catalog() if x.id == command_id), None)
+        if item is None:
+            raise ValueError("bilinmeyen bakım komutu")
+        self.agent.events.publish("tool.started", {"tool": f"maintenance:{item.id}"},
+                                  source="health-panel")
+        result = run_maintenance(item.id, cwd=Path.cwd())
+        with self._command_lock:
+            self._command_results[item.id] = result
+        self.agent.events.publish(
+            "tool.finished" if result["ok"] else "tool.error",
+            {"tool": f"maintenance:{item.id}", "ok": result["ok"],
+             "returncode": result["returncode"]}, source="health-panel",
+        )
+        return result
 
     def _kimlik_betigi(self) -> str:
         """Asistan kimliğini sayfaya gömen kısa betik.
@@ -303,6 +374,16 @@ class PanelServer:
             "nesne": self.object_vision.available,
             "ocr": self.ocr.available,
             "face_recognition": self.face_recognizer.available,
+            "screenshot": self.screenshot.available,
+            "multi_agent": self.agent.supervisor.enabled,
+            "active_agent_role": (
+                self.agent.active_delegation.role.value
+                if self.agent.active_delegation is not None else None
+            ),
+            "last_agent_role": (
+                self.agent.last_delegation.role.value
+                if self.agent.last_delegation is not None else None
+            ),
             **self._rag_meta(),
             # Vision understanding is still staged; guided diagnostics is live.
             "vision": False,
@@ -525,7 +606,7 @@ class PanelServer:
                     ]}
 
         def komutlar() -> dict[str, Any]:
-            satirlar = panel_rows() + [
+            satirlar = self.maintenance_rows() + panel_rows() + [
                 {"ad": "Kişisel", "deger": item.phrase,
                  "aciklama": f"Öğretilen karşılık: {item.expansion}", "komut": item.phrase,
                  "kisisel": "1"}
@@ -549,21 +630,19 @@ class PanelServer:
                         for t in reversed(traces)]}
 
         def saglik() -> dict[str, Any]:
-            t = collect_telemetry()
-            ram, disk, gpu = t["ram"], t["disk"], t["gpu"]
-            satirlar = [
-                {"ad": "CPU", "deger": f"%{t['cpu']['percent']:.0f}"},
-                {"ad": "RAM", "deger": f"%{ram['percent']:.0f} · {max(0.0, ram['total_gb'] - ram['used_gb']):.1f} GB boş"},
-                {"ad": "Disk", "deger": f"%{disk['used_percent']:.0f} · SMART {disk['smart'] or 'bilinmiyor'}"},
-                {"ad": "GPU", "deger": (f"{gpu.get('name') or 'GPU'} · {gpu.get('temp_c') or '—'} °C"
-                                           if gpu.get("available") else "algılanmadı")},
-                {"ad": "Model", "deger": getattr(self.agent.llm, "model", "") or self.agent.llm.name},
-                {"ad": "Güvenlik", "deger": "izin ve denetim katmanı etkin"},
-            ]
-            kritik = ram["percent"] >= 95 or disk["used_percent"] >= 95
-            return {"durum": "uyari" if kritik else "hazir",
-                    "ozet": "dikkat gerekli" if kritik else "temel kontroller normal",
-                    "satirlar": satirlar}
+            report = self.health_report()
+            return {
+                "durum": ("hazir" if report["status"] == "OPERATIONAL" else
+                           "uyari" if report["status"] == "DEGRADED" else "kritik"),
+                "ozet": f"{report['score']} / 100 · {report['status']}",
+                "score": report["score"], "status": report["status"],
+                "checked_at": report["checked_at"],
+                "categories": report["categories"],
+                "satirlar": [{"ad": item["label"],
+                               "deger": f"{item['value']} · {item['status'].upper()}",
+                               "aciklama": item["category"]}
+                              for item in report["checks"]],
+            }
 
         def ajanda() -> dict[str, Any]:
             if self.agenda is None:
@@ -615,6 +694,10 @@ class PanelServer:
 
     def _on_state(self, old: JarvisState, new: JarvisState) -> None:
         self.hub.publish("state", {"state": new.value, "label": new.label_tr})
+
+    def _on_core_event(self, event: Event) -> None:
+        """Bridge core events to SSE without coupling core modules to the GUI."""
+        self.hub.publish(event.name, event.as_dict(), retain=False)
 
     def ask(self, text: str, *, speech: SpeechNormalization | None = None,
             approved_high: bool = False
@@ -674,10 +757,30 @@ class PanelServer:
 
     def listen_result(self, audio: bytes, content_type: str = "") -> SpeechNormalization:
         """Return auditable raw/normalized speech data without executing it."""
-        raw = self.stt.transcribe(audio, content_type)
-        preliminary = self.speech_normalizer.normalize(raw)
-        risk = self.agent.intent_router.route(preliminary.normalized_text).risk
-        return self.speech_normalizer.normalize(raw, risk=risk)
+        self.agent.events.publish(
+            "voice.input", {"bytes": len(audio), "content_type": content_type},
+            source="voice",
+        )
+        self.agent.events.publish("voice.listening", {"stt": self.stt.name},
+                                  source="voice")
+        try:
+            raw = self.stt.transcribe(audio, content_type)
+            preliminary = self.speech_normalizer.normalize(raw)
+            risk = self.agent.intent_router.route(preliminary.normalized_text).risk
+            result = self.speech_normalizer.normalize(raw, risk=risk)
+        except Exception as exc:
+            self.agent.events.publish(
+                "voice.error", {"stage": "stt", "error_type": type(exc).__name__},
+                source="voice",
+            )
+            raise
+        self.agent.events.publish(
+            "voice.finished",
+            {"stage": "stt", "characters": len(result.normalized_text),
+             "confidence": result.confidence},
+            source="voice",
+        )
+        return result
 
     def konus(self, audio: bytes, content_type: str = "") -> dict[str, Any]:
         """Hands-free turn: hear it, answer it, in one round trip.
@@ -739,10 +842,34 @@ class PanelServer:
     def _telemetry_loop(self) -> None:
         while not self._stop.is_set():
             try:
-                self.hub.publish("telemetry", collect_telemetry())
+                telemetry = collect_telemetry()
+                self.hub.publish("telemetry", telemetry)
+                now = time.monotonic()
+                if (self.monitor.config.enabled
+                        and now - self._last_resource_monitor
+                        >= self.monitor.config.interval):
+                    self.monitor.evaluate_telemetry(telemetry)
+                    self._last_resource_monitor = now
             except Exception:
                 pass  # a telemetry hiccup must never kill the server
             self._stop.wait(TELEMETRY_PERIOD_S)
+
+    def _monitor_loop(self) -> None:
+        """Run slower service/model probes independently from UI telemetry."""
+        config = self.monitor.config
+        if not config.enabled:
+            return
+        while not self._stop.is_set():
+            try:
+                self.monitor.evaluate_health(self.health_report(refresh=True))
+                self.monitor.report_success("monitor.health")
+            except Exception as exc:
+                self.monitor.report_error(
+                    "monitor.health", "Sağlık kontrolü tamamlanamadı",
+                    error_type=type(exc).__name__,
+                )
+            if self._stop.wait(config.health_interval):
+                return
 
     def _reminder_loop(self) -> None:
         while not self._stop.is_set():
@@ -755,15 +882,22 @@ class PanelServer:
 
     # ---------------- lifecycle ----------------
 
+    def _start_background(self, target, name: str) -> None:
+        thread = threading.Thread(target=target, name=name, daemon=True)
+        self._background_threads.append(thread)
+        thread.start()
+
     def serve_forever(self) -> None:
         handler = _make_handler(self)
         self._httpd = _PanelHTTPServer((self.host, self.port), handler)
         self._httpd.daemon_threads = True
-        threading.Thread(target=self._telemetry_loop, daemon=True).start()
+        self._start_background(self._telemetry_loop, "jarvis-telemetry")
+        if self.monitor.config.enabled:
+            self._start_background(self._monitor_loop, "jarvis-proactive-monitor")
         if self.reminders is not None:
-            threading.Thread(target=self._reminder_loop, daemon=True).start()
+            self._start_background(self._reminder_loop, "jarvis-reminders")
         if self.rag_auto_paths:
-            threading.Thread(target=self._rag_sync_loop, daemon=True).start()
+            self._start_background(self._rag_sync_loop, "jarvis-rag-sync")
         try:
             self._httpd.serve_forever()
         finally:
@@ -771,8 +905,20 @@ class PanelServer:
 
     def shutdown(self) -> None:
         self._stop.set()
+        self._state_unsubscribe()
+        self._event_unsubscribe()
         if self._httpd is not None:
             self._httpd.shutdown()
+        current = threading.current_thread()
+        for thread in tuple(self._background_threads):
+            if thread is not current:
+                thread.join(timeout=25.0)
+        self._background_threads = [t for t in self._background_threads if t.is_alive()]
+        self.monitor.close()
+        self.vision_pipeline.close()
+        close_tts = getattr(self.tts, "close", None)
+        if callable(close_tts):
+            close_tts()
 
 
 def _make_handler(server: PanelServer):
@@ -871,6 +1017,10 @@ def _make_handler(server: PanelServer):
                 return self._serve_panel()
             if path == "/moduller":
                 return self._json(200, server.modul_verisi())
+            if path == "/system-health":
+                return self._json(200, server.health_report())
+            if path == "/maintenance-commands":
+                return self._json(200, {"commands": server.maintenance_rows()})
             if path.startswith("/speak/"):
                 return self._serve_speech(path.rsplit("/", 1)[-1])
             if path == "/events":
@@ -893,12 +1043,20 @@ def _make_handler(server: PanelServer):
                 return self._handle_objects()
             if path == "/ocr":
                 return self._handle_ocr()
+            if path == "/vision/analyze":
+                return self._handle_vision_analysis()
+            if path == "/vision/screenshot":
+                return self._handle_screenshot()
             if path == "/komut-ogret":
                 return self._handle_custom_command()
             if path == "/komut-sil":
                 return self._handle_custom_command(delete=True)
             if path == "/komut-analiz":
                 return self._handle_command_analysis()
+            if path == "/health/refresh":
+                return self._json(200, server.health_report(refresh=True))
+            if path == "/maintenance/run":
+                return self._handle_maintenance_run()
             if path == "/teshis/baslat":
                 return self._handle_diagnostic(start=True)
             if path == "/teshis/yanit":
@@ -937,6 +1095,19 @@ def _make_handler(server: PanelServer):
                     phrase, str(payload.get("expansion", "")).strip())
                 return self._json(200, {"saved": True, "phrase": item.phrase,
                                         "expansion": item.expansion})
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                return self._json(400, {"error": str(exc)})
+
+        def _handle_maintenance_run(self) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 1024:
+                    return self._json(400, {"error": "geçersiz istek boyutu"})
+                payload = json.loads(self.rfile.read(length))
+                command_id = str(payload.get("id", "")).strip()
+                return self._json(200, server.run_maintenance(command_id))
+            except PermissionError as exc:
+                return self._json(403, {"error": str(exc)})
             except (ValueError, TypeError, json.JSONDecodeError) as exc:
                 return self._json(400, {"error": str(exc)})
 
@@ -1105,7 +1276,11 @@ def _make_handler(server: PanelServer):
 
             kare = self.rfile.read(length)
             try:
-                yuzler = server.vision.detect(kare)
+                with server._agent_lock:
+                    sonuc = server.vision_pipeline.submit(
+                        kare, tasks=("faces",), source="camera"
+                    ).result(timeout=120.0)
+                yuzler = sonuc.analyses["faces"]
             except VisionError as exc:
                 print(f"[kamera] çözümleme başarısız: {exc}", flush=True)
                 return self._json(502, {"error": str(exc)})
@@ -1119,7 +1294,7 @@ def _make_handler(server: PanelServer):
                 except Exception as exc:
                     identity = {"known": False, "error": str(exc)}
             return self._json(200, {"yuz_sayisi": len(yuzler),
-                                    "yuzler": [y.as_dict() for y in yuzler],
+                                    "yuzler": yuzler,
                                     "kimlik": identity})
 
         def _frame_for(self, provider) -> bytes | None:
@@ -1141,8 +1316,12 @@ def _make_handler(server: PanelServer):
             frame = self._frame_for(server.object_vision)
             if frame is None: return
             try:
-                items = server.object_vision.detect(frame)
-                return self._json(200, {"nesneler": [x.as_dict() for x in items]})
+                with server._agent_lock:
+                    result = server.vision_pipeline.submit(
+                        frame, tasks=("objects",), source="camera"
+                    ).result(timeout=120.0)
+                items = result.analyses["objects"]
+                return self._json(200, {"nesneler": items})
             except Exception as exc:
                 return self._json(502, {"error": str(exc)})
 
@@ -1150,7 +1329,48 @@ def _make_handler(server: PanelServer):
             frame = self._frame_for(server.ocr)
             if frame is None: return
             try:
-                return self._json(200, server.ocr.read(frame).as_dict())
+                with server._agent_lock:
+                    result = server.vision_pipeline.submit(
+                        frame, tasks=("ocr",), source="camera"
+                    ).result(timeout=120.0)
+                return self._json(200, result.analyses["ocr"])
+            except Exception as exc:
+                return self._json(502, {"error": str(exc)})
+
+        def _handle_vision_analysis(self) -> None:
+            frame = self._frame_for(server.vision_pipeline)
+            if frame is None:
+                return
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            tasks = tuple(x.strip() for x in query.get("tasks", ["faces"])[0].split(",") if x.strip())
+            try:
+                with server._agent_lock:
+                    result = server.vision_pipeline.submit(
+                        frame, tasks=tasks, source="upload"
+                    ).result(timeout=120.0)
+                return self._json(200, result.as_dict())
+            except (VisionError, ValueError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except Exception as exc:
+                return self._json(502, {"error": str(exc)})
+
+        def _handle_screenshot(self) -> None:
+            if not server.screenshot.available:
+                return self._json(503, {"error": getattr(
+                    server.screenshot, "reason", "Ekran görüntüsü kapalı.")})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 0 or length > 4096:
+                    return self._json(413, {"error": "istek çok büyük"})
+                body = json.loads(self.rfile.read(length) or b"{}")
+                tasks = body.get("tasks", ["ocr"])
+                with server._agent_lock:
+                    result = server.vision_pipeline.capture_and_submit(
+                        tasks=tasks
+                    ).result(timeout=120.0)
+                return self._json(200, result.as_dict())
+            except (VisionError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                return self._json(400, {"error": str(exc)})
             except Exception as exc:
                 return self._json(502, {"error": str(exc)})
 
@@ -1242,6 +1462,10 @@ def _make_handler(server: PanelServer):
             # lets a client observe the reply while the machine is still marked
             # SPEAKING, which is both wrong and racy.
             server.agent.state.transition(JarvisState.SPEAKING)
+            server.agent.events.publish(
+                "voice.output", {"stage": "tts", "provider": server.tts.name},
+                source="voice",
+            )
             audio, hata = b"", None
             try:
                 audio = b"".join(server.tts.synthesize(text))
@@ -1249,9 +1473,17 @@ def _make_handler(server: PanelServer):
                 # Printed, not swallowed: the panel tells the user to look here.
                 print(f"[ses] sentez başarısız: {exc}", flush=True)
                 hata = (502, str(exc))
+                server.agent.events.publish(
+                    "voice.error", {"stage": "tts", "error_type": type(exc).__name__},
+                    source="voice",
+                )
             except Exception as exc:
                 print(f"[ses] beklenmeyen hata: {type(exc).__name__}: {exc}", flush=True)
                 hata = (500, f"{type(exc).__name__}: {exc}")
+                server.agent.events.publish(
+                    "voice.error", {"stage": "tts", "error_type": type(exc).__name__},
+                    source="voice",
+                )
             server.agent.state.transition(JarvisState.STANDBY)
 
             if hata is not None:
@@ -1259,7 +1491,15 @@ def _make_handler(server: PanelServer):
 
             if not audio:
                 print("[ses] sentezleyici boş yanıt döndü", flush=True)
+                server.agent.events.publish(
+                    "voice.error", {"stage": "tts", "error_type": "EMPTY_AUDIO"},
+                    source="voice",
+                )
                 return self._json(502, {"error": "ses üretilemedi (boş yanıt)"})
+            server.agent.events.publish(
+                "voice.finished", {"stage": "tts", "bytes": len(audio)},
+                source="voice",
+            )
 
             self.send_response(200)
             # Tür sağlayıcıdan geliyor: ElevenLabs MP3, Piper WAV veriyor.

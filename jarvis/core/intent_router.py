@@ -118,6 +118,7 @@ class IntentRouter:
         "kodunu incele", "kodu incele", "kodlari incele", "source code", "kaynak kod",
         "fonksiyonu incele", "sinifi incele", "bug bul", "hatayi duzelt", "refactor",
         "authentication kod", "python dosya", "py dosya", "kod yaz", "kodu duzelt",
+        "kodundaki hata", "koddaki hata",
     )
     _RAG_EXPLICIT = (
         "bilgi tabaninda", "bilgi tabanindan", "dokumaninda", "dokumanda", "pdf'de",
@@ -190,8 +191,13 @@ class IntentRouter:
             or (ambiguous and risk >= RiskLevel.HIGH)
         )
         wake_key = re.sub(r"[^a-z0-9]", "", katla(normalized))
+        wake_phrases = {
+            "jarvis",
+            "jarvisaktifmisin",
+            "jarvisaktifmi",
+        }
         reasoning_level = (
-            0 if wake_key == "jarvis"
+            0 if wake_key in wake_phrases
             else self._reasoning_for(decision.intent)
         )
         return replace(

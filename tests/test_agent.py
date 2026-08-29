@@ -18,6 +18,28 @@ def test_state_machine_notifies_listeners():
     ]
 
 
+def test_state_listener_failure_does_not_break_transition(caplog):
+    sm = StateMachine()
+    sm.subscribe(lambda _old, _new: (_ for _ in ()).throw(RuntimeError("boom")))
+    sm.transition(JarvisState.THINKING, reason="test", details={"request": "r1"})
+    snap = sm.snapshot()
+    assert snap.state is JarvisState.THINKING
+    assert snap.previous is JarvisState.STANDBY
+    assert snap.revision == 1
+    assert snap.reason == "test" and snap.details == {"request": "r1"}
+    assert "state listener failed" in caplog.text
+
+
+def test_state_subscription_can_be_removed():
+    sm = StateMachine()
+    seen = []
+    unsubscribe = sm.subscribe(lambda old, new: seen.append((old, new)))
+    unsubscribe()
+    unsubscribe()
+    sm.transition(JarvisState.THINKING)
+    assert seen == []
+
+
 def test_state_labels_are_turkish():
     assert JarvisState.DIAGNOSING.label_tr == "TEŞHİS EDİYOR"
     assert JarvisState.STANDBY.label_tr == "HAZIR"
@@ -48,6 +70,25 @@ def test_agent_returns_to_standby_after_turn():
     assert agent.state.state is JarvisState.STANDBY
 
 
+def test_unexpected_turn_failure_still_recovers_state(monkeypatch):
+    agent = _agent()
+    monkeypatch.setattr(agent.intent_router, "route",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    try:
+        agent.ask("merhaba")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("beklenmeyen çekirdek hatası yutulmamalı")
+    assert agent.state.state is JarvisState.STANDBY
+
+
+def test_agent_step_limit_is_bounded():
+    assert _agent().max_steps >= 1
+    cfg = Config(llm_provider="mock", non_interactive=True, max_agent_steps=999)
+    assert build_agent(cfg, memory=MemoryStore(":memory:")).max_steps == 32
+
+
 def test_first_turn_is_marked_for_the_model():
     """The model cannot reliably tell it is the first message; we say so."""
     agent = _agent()
@@ -70,6 +111,17 @@ def test_wake_word_bypasses_llm_and_returns_short_reply(monkeypatch):
     assert agent.last_trace is not None
     assert agent.last_trace.reasoning_level == 0
     assert agent.last_trace.thinking_enabled is False
+
+
+def test_active_question_always_returns_efendim_without_llm(monkeypatch):
+    agent = _agent()
+
+    def should_not_run(*args, **kwargs):
+        raise AssertionError("aktiflik çağrısı LLM'e gitmemeli")
+
+    monkeypatch.setattr(agent.llm, "chat", should_not_run)
+    assert agent.ask("Jarvis aktif misin?") == "Efendim?"
+    assert agent.ask("J.A.R.V.I.S. aktif mi?") == "Efendim?"
 
 
 def test_later_turns_do_not_keep_the_first_turn_marker():

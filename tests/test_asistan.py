@@ -73,7 +73,7 @@ def test_a_leftover_friday_prefix_changes_nothing(monkeypatch):
     """Eski kurulumdaki FRIDAY_ satırları artık okunmuyor."""
     monkeypatch.setenv("FRIDAY_TTS_PROVIDER", "piper")
     monkeypatch.delenv("JARVIS_TTS_PROVIDER", raising=False)
-    assert Config().tts_provider == "elevenlabs"
+    assert Config().tts_provider == "xtts"
 
 
 # ---------------- görünen ad ile okunuş ----------------

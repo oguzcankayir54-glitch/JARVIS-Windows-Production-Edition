@@ -60,6 +60,14 @@ def test_conversation_is_logged():
     assert s.session_count("sess2") == 1
 
 
+def test_fact_count_is_exact_and_does_not_mark_usage():
+    s = _store()
+    s.remember("a", "1")
+    s.remember("b", "2")
+    assert s.fact_count() == 2
+    assert all(f.usage_count == 0 for f in s.all_facts())
+
+
 def test_memory_tools_roundtrip_through_manager():
     s = _store()
     reg = register_memory_tools(ToolRegistry(), s)

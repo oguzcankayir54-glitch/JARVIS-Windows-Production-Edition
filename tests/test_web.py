@@ -102,6 +102,43 @@ def test_health(server):
     assert status == 200 and json.loads(body)["ok"] is True
 
 
+def test_detailed_health_returns_measured_report(server, monkeypatch):
+    report = {"score": 96, "status": "OPERATIONAL", "checks": [],
+              "categories": {}, "checked_at": 1.0, "platform": "Test"}
+    monkeypatch.setattr(server, "health_report", lambda refresh=False: report)
+    status, body = _get(server, "/system-health")
+    assert status == 200 and json.loads(body)["score"] == 96
+
+
+def test_refresh_health_forces_a_new_probe(server, monkeypatch):
+    seen = []
+    monkeypatch.setattr(server, "health_report", lambda refresh=False: (
+        seen.append(refresh) or {"score": 90, "status": "OPERATIONAL"}))
+    status, body = _post(server, "/health/refresh", {})
+    assert status == 200 and body["score"] == 90
+    assert seen == [True]
+
+
+def test_maintenance_run_endpoint_accepts_catalog_id_only(server, monkeypatch):
+    monkeypatch.setattr(server, "run_maintenance", lambda command_id: {
+        "id": command_id, "ok": True, "returncode": 0,
+        "stdout": "Python 3.11", "stderr": "", "duration_ms": 1,
+    })
+    status, body = _post(server, "/maintenance/run", {"id": "python_version"})
+    assert status == 200 and body["stdout"] == "Python 3.11"
+
+
+def test_maintenance_run_endpoint_rejects_unknown_or_risky_id(server):
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _post(server, "/maintenance/run", {"id": "unknown; sudo reboot"})
+    assert exc.value.code == 400
+    risky = ("ollama_restart" if __import__("platform").system() != "Windows"
+             else "jarvis_start")
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _post(server, "/maintenance/run", {"id": risky})
+    assert exc.value.code == 403
+
+
 def test_panel_is_served_in_live_mode(server):
     status, html = _get(server, "/")
     assert status == 200

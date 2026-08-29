@@ -178,6 +178,11 @@ class MemoryStore:
         ).fetchone()
         return int(row["n"])
 
+    def fact_count(self) -> int:
+        """Exact durable fact count for diagnostics; does not mark facts used."""
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM facts").fetchone()
+        return int(row["n"])
+
     # ---------------- user memory (facts) ----------------
 
     #: Sütun listesi tek yerde: SELECT'ler arasında sıra kayması,

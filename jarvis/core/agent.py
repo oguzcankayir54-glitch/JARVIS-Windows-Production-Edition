@@ -8,17 +8,21 @@ enforces the permission layer.
 """
 from __future__ import annotations
 
+import threading
 import uuid
 
 from ..llm.base import LLMProvider, Message
 from ..memory.cases import CaseStore
 from ..memory.store import MemoryStore
+from ..memory.working import WorkingMemory
 from ..tools.base import ToolRegistry, ToolResult
 from ..tools.manager import ToolManager
 from .arac_secici import VARSAYILAN_SINIR, araclari_sec
 from .asistan import Asistan, asistan_bul
 from .context_manager import ContextManager
+from .events import EventBus
 from .metin import ingilizce_agirlikli, katla
+from .multi_agent import DelegationDecision, Supervisor
 from .intent_router import Intent, IntentDecision, IntentRouter
 from .observability import RequestTrace, RequestTraceLog
 from .persona import build_system_prompt
@@ -49,12 +53,20 @@ class Agent:
         intent_router: IntentRouter | None = None,
         tool_router: ToolRouter | None = None,
         trace_log: RequestTraceLog | None = None,
+        events: EventBus | None = None,
+        supervisor: Supervisor | None = None,
     ) -> None:
         self.llm = llm
         self.tools = tools
         self.registry = registry
         self.state = state or StateMachine()
-        self.max_steps = max_steps
+        self.events = events or EventBus()
+        self.supervisor = supervisor or Supervisor(enabled=False)
+        self.active_delegation: DelegationDecision | None = None
+        self.last_delegation: DelegationDecision | None = None
+        # A configuration mistake must not disable the loop (0) or create an
+        # effectively unbounded agent. The documented default remains 6.
+        self.max_steps = max(1, min(32, int(max_steps)))
         self.memory = memory
         self.cases = cases
         self.agenda = agenda
@@ -85,11 +97,36 @@ class Agent:
             max_chars=self.context_max_chars,
             tool_result_max_chars=self.tool_result_max_chars,
         )
-        self.last_intent = IntentDecision(Intent.UNKNOWN, 0.0)
-        self.history: list[Message] = [
+        self.working_memory = WorkingMemory([
             Message(role="system",
                     content=build_system_prompt(self.owner, machine, self.asistan))
-        ]
+        ])
+        # One Agent owns one mutable conversation. Serialising turns prevents
+        # GUI/voice callers from interleaving messages and tool results.
+        self._turn_lock = threading.RLock()
+        self.last_intent = IntentDecision(Intent.UNKNOWN, 0.0)
+        self._state_event_unsubscribe = self.state.subscribe(self._on_state_event)
+        self.events.publish("jarvis.started", {"session_id": self.session_id},
+                            source="agent")
+        self.events.publish("jarvis.ready", {"state": self.state.state.value},
+                            source="agent")
+
+    def _on_state_event(self, old: JarvisState, new: JarvisState) -> None:
+        self.events.publish(
+            "state.changed",
+            {"old": old.value, "new": new.value,
+             "revision": self.state.snapshot().revision},
+            source="state",
+        )
+
+    @property
+    def history(self) -> list[Message]:
+        """Backward-compatible access to the centrally owned working memory."""
+        return self.working_memory.messages
+
+    @history.setter
+    def history(self, messages: list[Message]) -> None:
+        self.working_memory.replace(messages)
 
 
     ILK_TUR_ONEKI = "Bu, oturumun İLK kullanıcı mesajı."
@@ -267,6 +304,10 @@ class Agent:
         )
         if not facts:
             return None
+        self.events.publish(
+            "memory.retrieved", {"count": len(facts), "automatic": True},
+            source="memory",
+        )
         lines = "\n".join(
             f"- [{f.canonical_category.value}] {f.as_line()}" for f in facts
         )
@@ -396,6 +437,50 @@ class Agent:
     def ask(self, user_text: str, *, original_text: str | None = None,
             speech_confidence: float = 1.0,
             speech_ambiguity: bool = False) -> str:
+        """Serialise a complete turn and always recover the central state."""
+        with self._turn_lock:
+            self.active_delegation = None
+            try:
+                answer = self._ask_turn(
+                    user_text, original_text=original_text,
+                    speech_confidence=speech_confidence,
+                    speech_ambiguity=speech_ambiguity,
+                )
+                if self.active_delegation is not None:
+                    role = self.active_delegation.role.value
+                    self.events.publish(
+                        "agent.finished", {"role": role, "depth": 1},
+                        source="supervisor",
+                    )
+                    self.events.publish(
+                        "supervisor.completed", {"role": role},
+                        source="supervisor",
+                    )
+                return answer
+            except Exception as exc:
+                if self.active_delegation is not None:
+                    self.events.publish(
+                        "agent.error",
+                        {"role": self.active_delegation.role.value,
+                         "error_type": type(exc).__name__},
+                        source="supervisor",
+                    )
+                self.events.publish(
+                    "jarvis.error", {"error_type": type(exc).__name__},
+                    source="agent",
+                )
+                raise
+            finally:
+                self.last_delegation = self.active_delegation
+                self.active_delegation = None
+                if self.state.state is not JarvisState.STANDBY:
+                    self.state.transition(
+                        JarvisState.STANDBY, reason="turn.finally.recovery"
+                    )
+
+    def _ask_turn(self, user_text: str, *, original_text: str | None = None,
+            speech_confidence: float = 1.0,
+            speech_ambiguity: bool = False) -> str:
         """Run one full turn and return the assistant's final text."""
         self.state.transition(JarvisState.LISTENING)
         ilk_tur = not any(m.role == "user" for m in self.history)
@@ -414,6 +499,20 @@ class Agent:
             speech_confidence=speech_confidence,
             ambiguity=speech_ambiguity,
         )
+        delegation = self.supervisor.route(self.last_intent)
+        if delegation is not None:
+            self.active_delegation = delegation
+            role = delegation.role.value
+            payload = {
+                "role": role, "intent": self.last_intent.intent.value,
+                "reason": delegation.reason, "depth": delegation.depth,
+            }
+            self.events.publish("supervisor.routing", payload, source="supervisor")
+            self.events.publish("agent.delegated", payload, source="supervisor")
+            self.events.publish(
+                "agent.started", {"role": role, "depth": delegation.depth},
+                source="supervisor",
+            )
         turn_trace, trace_started = self.trace_log.start(
             request_id=uuid.uuid4().hex[:16],
             user_text=user_text,
@@ -426,6 +525,9 @@ class Agent:
                 and bool(getattr(self.llm, "think", False))
             ),
         )
+        if delegation is not None:
+            turn_trace.specialist_role = delegation.role.value
+            turn_trace.delegation_depth = delegation.depth
 
         # LEVEL 0 is a wake acknowledgement, not a language-model task.
         # Keeping it deterministic removes model latency and prevents a bare
@@ -473,6 +575,10 @@ class Agent:
 
         self.history = self.context_manager.replace_system_block(
             self.history, self.INTENT_ONEKI, self._intent_context(self.last_intent)
+        )
+        self.history = self.context_manager.replace_system_block(
+            self.history, "AKTİF UZMAN ROLÜ —",
+            (self.supervisor.context(delegation) if delegation is not None else None),
         )
 
         # Refresh the memory block each turn so newly remembered facts apply
@@ -538,11 +644,20 @@ class Agent:
             self._baglami_daralt()
             self.state.transition(JarvisState.THINKING)
             try:
+                self.events.publish(
+                    "llm.started", {"model": self._trace_model_name()},
+                    source="agent",
+                )
                 apply_reasoning = getattr(self.llm, "apply_reasoning", None)
                 if apply_reasoning is not None:
                     apply_reasoning(self.last_intent.reasoning_level)
                 response = self.llm.chat(self.history, tools=schemas)
             except Exception as exc:
+                self.events.publish(
+                    "llm.error", {"model": self._trace_model_name(),
+                                  "error_type": type(exc).__name__},
+                    source="agent",
+                )
                 cevap = self._llm_hatasi(exc)
                 self.history.append(Message(role="assistant", content=cevap))
                 if self.memory is not None:
@@ -555,6 +670,13 @@ class Agent:
                     error_type=getattr(kind, "value", ""),
                 )
                 return cevap
+
+            self.events.publish(
+                "llm.finished",
+                {"model": self._trace_model_name(),
+                 "tool_calls": len(response.tool_calls)},
+                source="agent",
+            )
 
             if not response.wants_tool:
                 cevap = self._kullanici_cevabi(response.content, user_text)
@@ -590,12 +712,29 @@ class Agent:
             # Execute each requested tool through the permission-gated manager.
             self.state.transition(JarvisState.ANALYZING)
             for call in response.tool_calls:
+                self.events.publish("tool.started", {"tool": call.name},
+                                    source="agent")
                 turn_trace.tools_used.append(call.name)
                 if call.name in {"bilgi_ara", "bilgi_durum"}:
                     turn_trace.rag_used = True
                 if call.name in {"remember_fact", "recall_facts", "forget_fact"}:
                     turn_trace.memory_used = True
                 result = self.tools.dispatch(call.name, call.arguments)
+                self.events.publish(
+                    "tool.finished" if result.ok else "tool.error",
+                    {"tool": call.name, "ok": bool(result.ok),
+                     "error_type": result.error_type},
+                    source="agent",
+                )
+                if result.ok and call.name == "remember_fact":
+                    self.events.publish("memory.saved", {"tool": call.name},
+                                        source="memory")
+                elif result.ok and call.name == "recall_facts":
+                    adet = result.data.get("adet", 0) if isinstance(result.data, dict) else 0
+                    self.events.publish(
+                        "memory.retrieved", {"count": adet, "automatic": False},
+                        source="memory",
+                    )
                 tool_outcomes[call.name] = result
                 turn_trace.tool_results.append({
                     "tool": call.name,

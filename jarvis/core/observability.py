@@ -71,6 +71,8 @@ class RequestTrace:
     retry_count: int = 0
     reasoning_level: int = 1
     thinking_enabled: bool = False
+    specialist_role: str = ""
+    delegation_depth: int = 0
     latency_ms: float = 0.0
     token_usage: dict[str, Any] = field(default_factory=dict)
     response_status: str = "started"

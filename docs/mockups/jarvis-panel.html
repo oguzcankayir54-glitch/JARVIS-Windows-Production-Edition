@@ -237,6 +237,13 @@
     color:var(--dim); font:9px var(--f-mono); cursor:pointer; padding:5px 7px}
   .cmd-tools button:hover,.fav-btn.on{color:var(--accent); border-color:rgba(var(--accent-rgb),.5)}
   .fav-btn{margin-left:5px; padding:2px 5px}
+  .health-head{display:flex;align-items:center;gap:8px;padding:5px 0 9px;
+    font:10px var(--f-mono);color:var(--accent)}
+  .health-head strong{font-size:18px}
+  .health-head button{margin-left:auto}
+  .cmd-result{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg-3);
+    border:1px solid var(--line);border-radius:3px;padding:7px;margin:2px 0 6px;
+    color:var(--dim);font:9px/1.45 var(--f-mono);max-height:140px;overflow:auto}
   .mempty{font-size:10px; color:var(--mute); padding:10px 0; line-height:1.6}
   .rag-form{display:flex; gap:6px; flex:0 0 auto; margin-bottom:7px}
   .rag-form input{min-width:0; flex:1; border:1px solid var(--line); border-radius:3px;
@@ -713,6 +720,16 @@
     }
     let satirlar = veri.satirlar;
     let filtrele = null;
+    if(anahtar === "saglik"){
+      const head=document.createElement("div"); head.className="health-head";
+      const score=document.createElement("strong"); score.textContent=(veri.score??"—")+" / 100";
+      const status=document.createElement("span"); status.textContent=veri.status||"UNKNOWN";
+      const refresh=document.createElement("button"); refresh.type="button"; refresh.className="fav-btn";
+      refresh.textContent="REFRESH HEALTH";
+      refresh.onclick=async()=>{refresh.disabled=true;refresh.textContent="CHECKING…";
+        try{const r=await fetch("/health/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);await modulleriYenile();modulCiz("saglik")}catch(e){addNotice("Sağlık yenilenemedi: "+e.message)}finally{refresh.disabled=false;refresh.textContent="REFRESH HEALTH"}};
+      head.append(score,status,refresh); govde.appendChild(head);
+    }
     if(anahtar === "teshis" && veri.playbooklar && veri.playbooklar.length){
       const arac=document.createElement("div"); arac.className="cmd-tools"; arac.id="teshisForm";
       const vaka=document.createElement("input"); vaka.type="number"; vaka.min="1";
@@ -791,7 +808,19 @@
         tamam.onclick=async()=>{tamam.disabled=true;try{const r=await fetch("/ajanda/durum",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kayit_no:s.kayit_no,durum:"tamamlandi"})});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);await modulleriYenile()}catch(e){addNotice("Ajanda güncellenemedi: "+e.message)}finally{tamam.disabled=false}};
         satir.appendChild(tamam);
       }
-      if(s.komut){
+      if(s.bakim){
+        const copy=document.createElement("button"); copy.type="button"; copy.className="fav-btn";
+        copy.textContent="COPY"; copy.title="Komutu panoya kopyala";
+        copy.onclick=async e=>{e.stopPropagation();try{await navigator.clipboard.writeText(s.komut);addNotice("Komut kopyalandı: "+s.aciklama)}catch(_){addNotice("Tarayıcı pano izni vermedi.")}};
+        satir.appendChild(copy);
+        if(s.run_allowed){
+          const run=document.createElement("button"); run.type="button"; run.className="fav-btn"; run.textContent="RUN";
+          run.onclick=async e=>{e.stopPropagation();run.disabled=true;run.textContent="…";
+            try{const r=await fetch("/maintenance/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:s.id})});const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);s.last_result=d;modulCiz("komutlar")}catch(err){addNotice("Komut çalıştırılamadı: "+err.message)}finally{run.disabled=false;run.textContent="RUN"}};
+          satir.appendChild(run);
+        }
+      }
+      if(s.komut && !s.bakim){
         satir.classList.add("komut-row");
         satir.title = (s.aciklama || "") + " · Yazı kutusuna almak için tıklayın";
         satir.tabIndex = 0;
@@ -811,6 +840,13 @@
         boya(); satir.appendChild(fav);
       }
       govde.appendChild(satir);
+      if(s.bakim && s.last_result){
+        const result=document.createElement("pre"); result.className="cmd-result";
+        const r=s.last_result;
+        result.textContent=(r.ok?"SUCCESS":"FAILED")+" · exit "+(r.returncode??"—")+" · "+r.duration_ms+" ms\n"+
+          (r.stdout?"STDOUT\n"+r.stdout+"\n":"")+(r.stderr?"STDERR\n"+r.stderr:"");
+        govde.appendChild(result);
+      }
     });
     if(filtrele) filtrele();
   }
@@ -2019,6 +2055,18 @@
         if (d.role === "assistant") modulleriYenile();
       } catch (_) {}
     });
+
+    const systemNotice = (kind, e) => {
+      try {
+        const event = JSON.parse(e.data), d = event.payload || event;
+        const prefix = kind === "alert" ? "KRİTİK" : kind === "recovered" ? "DÜZELDİ" : "UYARI";
+        addNotice(prefix + " · " + (d.message || d.key || "Sistem bildirimi"));
+        if(kind !== "recovered") modulCiz("saglik");
+      } catch (_) {}
+    };
+    es.addEventListener("system.warning", e => systemNotice("warning", e));
+    es.addEventListener("system.alert", e => systemNotice("alert", e));
+    es.addEventListener("system.recovered", e => systemNotice("recovered", e));
 
     es.addEventListener("error", () => {
       badge.className = "live-badge off";

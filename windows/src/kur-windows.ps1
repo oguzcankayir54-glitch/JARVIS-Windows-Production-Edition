@@ -105,7 +105,7 @@ function Python-Bul {
         try {
             # $args YAZILMAZ: PowerShell'in otomatik degiskeni, islevin kendi
             # argumanlarini tutuyor. Uzerine yazmak splatting'i bozar.
-            $pArgs = if ($aday -eq "py") { @("-3", "-c", "import sys;print(sys.executable)") }
+            $pArgs = if ($aday -eq "py") { @("-3.11", "-c", "import sys;print(sys.executable)") }
                      else { @("-c", "import sys;print(sys.executable)") }
             $yol = & $komut.Source @pArgs 2>$null
             if ($LASTEXITCODE -ne 0 -or -not $yol) { continue }
@@ -128,7 +128,7 @@ if (-not $py) {
     Hata "Python 3.10 veya uzeri bulunamadi."
     Yaz ""
     Yaz "    Kurmak icin (yonetici gerekmez):" "White"
-    Yaz "        winget install Python.Python.3.12" "Cyan"
+    Yaz "        winget install Python.Python.3.11" "Cyan"
     Yaz ""
     Yaz "    Ya da: https://www.python.org/downloads/windows/" "Cyan"
     Yaz "    Kurulum sirasinda 'Add python.exe to PATH' KUTUSUNU ISARETLEYIN." "Yellow"
@@ -200,6 +200,7 @@ Tamam "temel paketler"
 # Ses ve mikrofon istege bagli: olmadan da calisiyor, ve indirmeleri buyuk.
 # Basarisiz olmalari kurulumu DUSURMEMELI — panel yazarak yine calisir.
 foreach ($ek in @(
+    @{ Ad = "Yerel Craig sesi (XTTS)"; Paket = "$Uygulama[ses-xtts]" },
     @{ Ad = "Ses (edge-tts)";        Paket = "edge-tts>=7.0" },
     @{ Ad = "Mikrofon (whisper)";    Paket = "faster-whisper>=1.0" }
 )) {
@@ -235,9 +236,15 @@ if (Test-Path $EnvYolu) {
         "# Buyutmek bellek istiyor: 8192 ~1.6 GB, 32768 ~6.3 GB KV onbellegi.",
         "JARVIS_OLLAMA_NUM_CTX=8192",
         "",
-        "# Seslendirme: edge (ucretsiz, anahtarsiz) | piper (cevrimdisi) | elevenlabs",
-        "JARVIS_TTS_PROVIDER=edge",
-        "JARVIS_EDGE_VOICE=tr-TR-AhmetNeural",
+        "# Ana ses: yerel XTTS Craig. ElevenLabs'a donus: provider=elevenlabs",
+        "JARVIS_TTS_PROVIDER=xtts",
+        "COQUI_TOS_AGREED=1",
+        "JARVIS_XTTS_SPEAKER=Craig Gutsy",
+        "JARVIS_XTTS_SPEED=1.04",
+        "JARVIS_XTTS_DEVICE=auto",
+        "JARVIS_XTTS_PRELOAD=true",
+        "JARVIS_XTTS_READY_BEFORE_LISTEN=true",
+        "JARVIS_XTTS_CACHE_SIZE=32",
         "",
         "# Mikrofon",
         "JARVIS_STT_ENABLED=true",

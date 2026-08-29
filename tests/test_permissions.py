@@ -16,6 +16,18 @@ def test_high_requires_approval():
     assert not denied.check("cfg", RiskLevel.HIGH, {}).allowed
 
 
+def test_sound_notice_only_runs_when_approval_is_actually_required():
+    notices = []
+    pm = PermissionManager(
+        audit=AuditLog(), approver=lambda *a: False,
+        notifier=lambda: notices.append("sound"),
+    )
+    pm.check("read", RiskLevel.LOW, {})
+    assert notices == []
+    pm.check("change", RiskLevel.HIGH, {})
+    assert notices == ["sound"]
+
+
 def test_critical_denied_without_approval():
     pm = PermissionManager(audit=AuditLog(), approver=lambda *a: False)
     assert not pm.check("format_disk", RiskLevel.CRITICAL, {"dev": "/dev/sda"}).allowed

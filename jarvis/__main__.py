@@ -1,12 +1,12 @@
 """Terminal entry point:  python -m jarvis
 
-A minimal REPL that shows the state transitions in the prompt, so you can see
-the core state machine driving the session. With ``--sesli`` the reply is also
-spoken through ElevenLabs.
+A minimal REPL that shows the state transitions in the prompt. With
+``--sesli`` the reply is spoken through the configured local/cloud provider.
 """
 from __future__ import annotations
 
 import argparse
+import atexit
 import sys
 
 from .bootstrap import build_agent
@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog=asistan_bul().kod,
         description=f"{asistan_bul().ad} terminal asistanı")
-    parser.add_argument("--sesli", action="store_true", help="Yanıtları ElevenLabs ile seslendir")
+    parser.add_argument("--sesli", action="store_true", help="Yanıtları yapılandırılmış sesle oku")
     parser.add_argument("--sessiz", action="store_true", help="Sesi kapat (.env'de açık olsa bile)")
     args = parser.parse_args(argv)
 
@@ -42,6 +42,17 @@ def main(argv: list[str] | None = None) -> int:
 
     speak = (args.sesli or cfg.voice_enabled) and not args.sessiz
     tts = tts_from_config(cfg)
+    close_tts = getattr(tts, "close", None)
+    if callable(close_tts):
+        atexit.register(close_tts)
+    if (speak and getattr(tts, "name", "") == "xtts"
+            and getattr(cfg, "xtts_ready_before_listen", True)):
+        print("· Craig sesi hazırlanıyor…", flush=True)
+        try:
+            tts.wait_ready()
+        except TTSError as exc:
+            print(f"! Craig sesi hazırlanamadı: {exc}")
+            speak = False
     if speak and not tts.available:
         print("! Ses istendi ama yapılandırılmamış. Kontrol için: jarvis-ses --kontrol\n")
         speak = False

@@ -196,8 +196,19 @@ class IntentRouter:
             "jarvisaktifmisin",
             "jarvisaktifmi",
         }
+        # STT often prefixes the wake phrase with the owner's name or moves
+        # the name after the question ("Oğuz, aktif misin Jarvis?"). Keep the
+        # shortcut intentionally short so a real request containing those
+        # words still reaches normal intent routing.
+        wake_words = katla(normalized).replace("?", " ").replace(",", " ").split()
+        short_active_wake = (
+            len(wake_words) <= 5
+            and "jarvis" in wake_words
+            and "aktif" in wake_words
+            and "misin" in wake_words
+        )
         reasoning_level = (
-            0 if wake_key in wake_phrases
+            0 if wake_key in wake_phrases or short_active_wake
             else self._reasoning_for(decision.intent)
         )
         return replace(

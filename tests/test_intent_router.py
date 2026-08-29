@@ -71,6 +71,7 @@ def test_speech_metadata_survives_intent_routing():
 @pytest.mark.parametrize("wake", [
     "Jarvis", "Jarvis?", "J.A.R.V.I.S.",
     "Jarvis aktif misin?", "J.A.R.V.I.S. aktif mi?",
+    "Oğuz, aktif misin Jarvis?",
 ])
 def test_bare_wake_word_is_level_zero(wake):
     got = IntentRouter().route(wake)

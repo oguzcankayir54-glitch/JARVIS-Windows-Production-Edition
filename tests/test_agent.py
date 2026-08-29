@@ -122,6 +122,7 @@ def test_active_question_always_returns_efendim_without_llm(monkeypatch):
     monkeypatch.setattr(agent.llm, "chat", should_not_run)
     assert agent.ask("Jarvis aktif misin?") == "Efendim?"
     assert agent.ask("J.A.R.V.I.S. aktif mi?") == "Efendim?"
+    assert agent.ask("Oğuz, aktif misin Jarvis?") == "Efendim?"
 
 
 def test_later_turns_do_not_keep_the_first_turn_marker():

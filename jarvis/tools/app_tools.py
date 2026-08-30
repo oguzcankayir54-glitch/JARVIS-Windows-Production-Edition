@@ -19,7 +19,6 @@ from typing import Any
 
 from ..apps.ac import uygulamayi_ac
 from ..apps.katalog import benzerler, bul, katalog, kullanici_katalogu
-from ..internet.ac import AcError
 from ..security.permissions import RiskLevel
 from .base import Param, Tool, ToolRegistry
 
@@ -43,10 +42,10 @@ def register_app_tools(registry: ToolRegistry, data_dir: str = "~/.jarvis") -> T
                         "ekleyebileceğini söyle."),
             }
 
-        try:
-            acilan = uygulamayi_ac(uygulama)
-        except AcError as exc:
-            return {"hata": str(exc), "uygulama": uygulama.ad}
+        # Launch failures must escape to Tool.run so they become an actual
+        # failed ToolResult.  Otherwise the model sees a successful tool call
+        # containing an error-shaped payload and may still claim it opened.
+        acilan = uygulamayi_ac(uygulama)
         return {"acildi": True, "uygulama": uygulama.ad,
                 "tur": uygulama.tur, "hedef": acilan}
 

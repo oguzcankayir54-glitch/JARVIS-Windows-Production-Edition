@@ -13,17 +13,78 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from pathlib import Path
+import threading
+import time
+from pathlib import PureWindowsPath
+
+import psutil
 
 from ..core.ortam import windows_erisimi_var, windows_mi, wsl_mi as _wsl_mi
 from ..internet.ac import AcError, tarayicida_ac
 from .katalog import URI, WEB, WINDOWS, Uygulama
 
-ZAMAN_ASIMI = 15.0
+BASLATMA_YOKLAMA_SURESI = 0.5
+SUREC_DOGRULAMA_SURESI = 4.0
+SUREC_DOGRULAMA_ARALIGI = 0.1
+
+_SUREC_ESLEME = {
+    # Modern Windows calc.exe'yi paketlenmiş hesap makinesine devredebilir.
+    "calc.exe": {"calc.exe", "calculator.exe", "calculatorapp.exe"},
+    # ms-settings URI'lerinin görünür sahibi bu süreçtir.
+    "ms-settings:": {"systemsettings.exe"},
+}
 
 
 #: Ortam tespiti tek yerde. Ad geriye dönük uyumluluk için duruyor.
 wsl_mi = _wsl_mi
+
+
+def _beklenen_surec_adlari(hedef: str) -> set[str]:
+    """Translate a catalogue target to the process Windows should expose."""
+    folded = (hedef or "").strip().casefold()
+    if not folded:
+        return set()
+    if folded.startswith("ms-settings:"):
+        return set(_SUREC_ESLEME["ms-settings:"])
+    name = PureWindowsPath(hedef).name.casefold()
+    if name.endswith(".msc"):
+        return {"mmc.exe"}
+    if name in _SUREC_ESLEME:
+        return set(_SUREC_ESLEME[name])
+    if name.endswith(".exe"):
+        return {name}
+    return set()
+
+
+def _surec_var_mi(adlar: set[str]) -> bool:
+    if not adlar:
+        return False
+    try:
+        for process in psutil.process_iter(["name"]):
+            try:
+                name = str(process.info.get("name") or "").casefold()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+            if name in adlar:
+                return True
+    except (psutil.Error, OSError):
+        return False
+    return False
+
+
+def _sureci_bekle(hedef: str) -> bool:
+    """Wait briefly until the process implied by ``hedef`` really exists."""
+    adlar = _beklenen_surec_adlari(hedef)
+    if not adlar:
+        return False
+    deadline = time.monotonic() + SUREC_DOGRULAMA_SURESI
+    while True:
+        if _surec_var_mi(adlar):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(SUREC_DOGRULAMA_ARALIGI, remaining))
 
 
 def _yerel_windows_programi(hedef: str) -> bool:
@@ -35,16 +96,39 @@ def _yerel_windows_programi(hedef: str) -> bool:
     """
     try:
         os.startfile(hedef)    # type: ignore[attr-defined]  # yalnızca Windows
-        return True
+        return _sureci_bekle(hedef)
     except (OSError, AttributeError, ValueError):
         return False
 
 
+def _arkada_bekle(process: subprocess.Popen) -> None:
+    """Reap a long-running child without blocking the request thread."""
+    try:
+        process.wait()
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def _calistir(argumanlar: list[str]) -> bool:
     try:
-        subprocess.run(argumanlar, timeout=ZAMAN_ASIMI,
-                       capture_output=True, check=False)
-        return True
+        process = subprocess.Popen(
+            argumanlar,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            return process.wait(timeout=BASLATMA_YOKLAMA_SURESI) == 0
+        except subprocess.TimeoutExpired:
+            # GUI hâlâ ayaktaysa açılışı başarılı kabul et; kapanmasını istek
+            # iş parçacığında beklemek 15 saniyelik gecikmeye ve yanlış
+            # fallback üzerinden ikinci kopyaya yol açıyordu.
+            threading.Thread(
+                target=_arkada_bekle,
+                args=(process,),
+                name="jarvis-app-reaper",
+                daemon=True,
+            ).start()
+            return True
     except (OSError, subprocess.SubprocessError):
         return False
 

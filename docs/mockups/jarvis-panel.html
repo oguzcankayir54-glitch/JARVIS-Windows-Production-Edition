@@ -2092,6 +2092,17 @@
     es.addEventListener("system.alert", e => systemNotice("alert", e));
     es.addEventListener("system.recovered", e => systemNotice("recovered", e));
 
+    // Sesli duyuru. Bildirim satırını system.alert zaten yazdı; buradaki
+    // olayın tek işi sesi çalmak, yoksa aynı uyarı iki kez görünürdü.
+    // Ses düğmesi kapalıysa hiçbir şey yapılmıyor: kullanıcı sessizlik
+    // istediğinde bunun proaktif uyarılar için de geçerli olması gerekir.
+    es.addEventListener("duyuru", e => {
+      try {
+        const event = JSON.parse(e.data), d = event.payload || event;
+        if (d.speech_id && voiceOn) speak(d.speech_id);
+      } catch (_) {}
+    });
+
     es.addEventListener("error", () => {
       badge.className = "live-badge off";
       badge.textContent = "bağlantı koptu";

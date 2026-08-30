@@ -90,3 +90,23 @@ def test_windows_adapters_are_registered_and_honest_on_linux():
             "windows_power", "windows_input"} <= names
     result = ToolManager(reg, PermissionManager(non_interactive=True)).dispatch("windows_service", {"name": "ollama"})
     assert result.ok and result.data["available"] is False
+
+
+def test_windows_service_tolerates_legacy_console_bytes(monkeypatch):
+    from types import SimpleNamespace
+
+    from jarvis.tools import windows_tools
+
+    options = {}
+
+    def fake_run(*args, **kwargs):
+        options.update(kwargs)
+        return SimpleNamespace(returncode=1, stdout="", stderr="bozuk \ufffd çıktı")
+
+    monkeypatch.setattr(windows_tools.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(windows_tools.subprocess, "run", fake_run)
+
+    result = windows_tools.windows_service("ollama")
+
+    assert options["errors"] == "replace"
+    assert result["available"] is False

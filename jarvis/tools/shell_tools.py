@@ -206,9 +206,24 @@ def run_terminal_command(command: str, timeout: float = 15.0) -> dict[str, Any]:
         raise PermissionError(verdict.reason)
 
     tokens = shlex.split(command.strip())
+
+    # ``echo`` is an executable on Unix but only a cmd.exe builtin on
+    # Windows.  Implementing this harmless command directly keeps the same
+    # no-shell guarantee on both platforms.
+    if tokens[0].lower().removesuffix(".exe") == "echo":
+        return {
+            "calisti": True,
+            "komut": command.strip(),
+            "risk": verdict.risk.label,
+            "cikis_kodu": 0,
+            "stdout": " ".join(tokens[1:]),
+            "stderr": "",
+        }
+
     try:
         proc = subprocess.run(
-            tokens, capture_output=True, text=True, timeout=timeout, check=False
+            tokens, capture_output=True, text=True, errors="replace",
+            timeout=timeout, check=False,
         )
     except FileNotFoundError:
         return {"calisti": False, "hata": f"Komut bulunamadı: {tokens[0]}"}

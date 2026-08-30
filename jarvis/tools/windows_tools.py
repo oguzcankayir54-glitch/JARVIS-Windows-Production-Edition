@@ -57,6 +57,7 @@ def windows_service(name: str) -> dict[str, Any]:
     try:
         completed = subprocess.run(
             ["sc.exe", "query", service], capture_output=True, text=True,
+            errors="replace",
             timeout=5, check=False, shell=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:

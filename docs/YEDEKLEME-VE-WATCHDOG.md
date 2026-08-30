@@ -41,12 +41,14 @@ JARVIS_LOG_BACKUP_COUNT=5
 ## Windows watchdog
 
 Kurulum kullanıcı Başlangıç klasörüne yönetici gerektirmeyen bir watchdog
-kısayolu ekler. Watchdog 30 saniyede bir yerel `/health` uç noktasını denetler.
-Üç ardışık başarısızlıkta ve en fazla 90 saniyede bir `JARVIS.exe`yi yeniden
-başlatır. Aynı anda yalnızca bir watchdog çalışabilir.
+kısayolu ekler. Watchdog varsayılan olarak kapalıdır; böylece panel Windows
+açılışında kullanıcı istemeden başlamaz. Etkinleştirildiğinde 30 saniyede bir
+yerel `/health` uç noktasını denetler. Üç ardışık başarısızlıkta ve en fazla
+90 saniyede bir `JARVIS.exe`yi görünür panel/tarayıcı açmadan yeniden başlatır.
+Takılmış bir başlatıcı varken ikinci bir süreç oluşturmaz.
 
-Kapatmak için `%LOCALAPPDATA%\Programs\JARVIS\jarvis.ini` içinde:
+Etkinleştirmek için `%LOCALAPPDATA%\Programs\JARVIS\jarvis.ini` içinde:
 
 ```ini
-watchdog = 0
+watchdog = 1
 ```

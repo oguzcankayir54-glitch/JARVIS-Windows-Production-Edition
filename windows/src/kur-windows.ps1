@@ -274,7 +274,7 @@ function Ini-Yaz($kod, $ad, $port) {
         "genislik = 1920",
         "yukseklik = 1080",
         "intro = 1",
-        "watchdog = 1",
+        "watchdog = 0",
         "jeton ="
     )
     if (Test-Path $yol) {

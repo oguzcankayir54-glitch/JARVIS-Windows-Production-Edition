@@ -45,6 +45,8 @@ static int     g_jeton_ayarlandi = 0;
 static int     g_port          = VARSAYILAN_PORT;
 static int     g_port_verildi  = 0;   /* ini'de acikca yazildi mi */
 static int     g_tarayici      = 1;
+/* Watchdog yeniden baslatmasi gorunur pencere/tarayici acmamali. */
+static int     g_watchdog      = 0;
 /* Kendi penceresinde mi acilsin, yoksa varsayilan tarayicida sekme olarak mi. */
 static int     g_uygulama      = 1;
 /* Acilis girisi. 0 yapilirsa panel dogrudan gelir. */
@@ -176,6 +178,23 @@ static void ayarlari_oku(void)
         }
     }
     fclose(f);
+}
+
+/* Watchdog normal masaustu tiklamasiyla ayni exe'yi kullanir, fakat panel
+ * penceresini acmasi kullanicinin kendi kendine aciliyor diye gormesine yol
+ * acar. Komut satiri yalnizca bu baslatma kaynagini ayirir; asistan secmez. */
+static void komut_satirini_oku(void)
+{
+    int argc = 0;
+    wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) return;
+    for (int i = 1; i < argc; i++) {
+        if (!_wcsicmp(argv[i], L"--watchdog")) {
+            g_watchdog = 1;
+            g_tarayici = 0;
+        }
+    }
+    LocalFree(argv);
 }
 
 /* ---------------------------------------------------------------- jeton */
@@ -657,6 +676,9 @@ int main(void)
     }
 
     ayarlari_oku();
+    /* INI normal kullanıcı açılışını belirler; watchdog bayrağı en son gelip
+       tarayıcıyı kesin olarak bastırır. */
+    komut_satirini_oku();
     /* Jeton BIR KEZ uretilir ve jarvis.ini'ye yazilir; sonraki her acilista
        ayni deger okunur. Adres sabit kaliyor, yer imine eklenebiliyor, ve
        tarayicida acik duran eski sekme calismaya devam ediyor. */

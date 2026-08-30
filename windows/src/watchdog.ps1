@@ -25,7 +25,9 @@ try {
     $sonBaslatma = [DateTime]::MinValue
     while ($true) {
         $ini = Join-Path $Kok "jarvis.ini"
-        if ((Ini-Oku $ini "watchdog" "1") -ne "1") { break }
+        # Watchdog opt-in'dir. Ayar dosyasında satır yoksa Windows açılışında
+        # paneli kendi kendine başlatmak kullanıcı niyeti sayılamaz.
+        if ((Ini-Oku $ini "watchdog" "0") -ne "1") { break }
         $port = Ini-Oku $ini "port" "8765"
         $jeton = Ini-Oku $ini "jeton" ""
         $adres = "http://127.0.0.1:$port/health"
@@ -40,8 +42,15 @@ try {
             ((Get-Date) - $sonBaslatma).TotalSeconds -ge 90) {
             $baslatici = Join-Path $Kok "JARVIS.exe"
             if (Test-Path $baslatici) {
-                Start-Process $baslatici -WorkingDirectory $Kok
-                $sonBaslatma = Get-Date
+                # Sağlık isteği takılmış bir başlatıcı varken her 90 saniyede
+                # bir yenisini üretme. Kullanıcının makinesinde bu hata kısa
+                # sürede birden fazla JARVIS.exe ve panel penceresi açıyordu.
+                $calisan = Get-Process -Name "JARVIS" -ErrorAction SilentlyContinue
+                if (-not $calisan) {
+                    Start-Process $baslatici -ArgumentList "--watchdog" `
+                        -WorkingDirectory $Kok -WindowStyle Hidden
+                    $sonBaslatma = Get-Date
+                }
             }
             $basarisiz = 0
         }

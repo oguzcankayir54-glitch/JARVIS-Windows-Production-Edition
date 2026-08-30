@@ -272,13 +272,20 @@ def test_windows_installer_registers_a_user_watchdog():
     assert "Invoke-WebRequest" in watchdog and "/health" in watchdog
     assert "Start-Process" in watchdog and "JARVIS.exe" in watchdog
     assert "Local\\JARVIS-Watchdog" in watchdog, "yalnizca tek izleyici calismali"
+    assert '-ArgumentList "--watchdog"' in watchdog
+    assert "-WindowStyle Hidden" in watchdog
+    assert 'Get-Process -Name "JARVIS"' in watchdog
+    assert 'L"--watchdog"' in _kaynak()
+    assert "g_tarayici = 0" in _kaynak()
 
 
-def test_watchdog_can_be_disabled_in_ini():
+def test_watchdog_is_opt_in_and_can_be_enabled_in_ini():
     ini = (WINDOWS / "jarvis.ini").read_text(encoding="utf-8-sig")
     watchdog = _oku("src/watchdog.ps1").decode("utf-8-sig")
-    assert "watchdog = 1" in ini
-    assert 'Ini-Oku $ini "watchdog" "1"' in watchdog
+    installer = _oku("src/kur-windows.ps1").decode("utf-8-sig")
+    assert "watchdog = 0" in ini
+    assert '"watchdog = 0"' in installer
+    assert 'Ini-Oku $ini "watchdog" "0"' in watchdog
 
 
 # ---------------- tek asistan ----------------

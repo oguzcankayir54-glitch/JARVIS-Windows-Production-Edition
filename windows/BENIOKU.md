@@ -99,6 +99,7 @@ tarayıcıyı açar.
 | `tarayici` | `1` | `0` yaparsanız tarayıcı açılmaz |
 | `uygulama` | `1` | Kendi penceresinde aç (sekme/adres çubuğu yok) |
 | `intro` | `1` | ~10 saniyelik açılış girişi; `0` = doğrudan panel |
+| `watchdog` | `0` | `1` yaparsanız çöken paneli arka planda yeniden başlatır |
 | `jeton` | (bir kez üretilir) | Erişim jetonu — **sabittir**, değişmez |
 | `komut` | (boş) | Başlatma komutunu tamamen değiştirir |
 

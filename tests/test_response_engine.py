@@ -88,9 +88,9 @@ def test_missing_tool_gate_needs_confidence_and_the_required_offered_tool():
         )
 
 
-def test_any_real_tool_call_keeps_the_missing_call_guard_closed():
+def test_unrelated_tool_call_does_not_fake_required_action_evidence():
     engine = ResponseEngine({"uygulama_ac"})
-    assert not engine.missing_required_tool_call(
+    assert engine.missing_required_tool_call(
         decision=_action_decision(),
         offered_tools={"uygulama_ac"},
         tools_used=("uygulama_listesi",),

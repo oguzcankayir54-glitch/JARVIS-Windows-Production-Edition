@@ -220,6 +220,24 @@ class Agent:
                 f" Bu turda {karar.required_tool} aracı zorunludur; araç sonucu "
                 "olmadan başarı veya sonuç bildirme."
             )
+        if karar.intent is Intent.CODING and karar.subtype == "CODE_INSPECT":
+            extra += (
+                " Kaynak hakkında sonuç vermeden önce inspect_project, code_search, "
+                "read_file veya list_directory ile gerçek kaynak kanıtı topla; "
+                "dosya ve satır uydurma."
+            )
+        elif karar.intent is Intent.CODING and karar.subtype == "CODE_EDIT":
+            extra += (
+                " Kod görevi zorunlu sırayla kanıtlanır: önce kaynağı incele, "
+                "sonra edit_file/write_file ile gerçekten değiştir, ardından "
+                "run_project_tests ile testi gerçekten çalıştır. Bu üç aşamadan "
+                "biri eksikse tamamlandı veya testler geçti deme."
+            )
+        elif karar.intent is Intent.CODING and karar.subtype == "CODE_TEST":
+            extra += (
+                " Test sonucunu yalnızca run_project_tests çıkış koduna dayandır; "
+                "çalıştırmadan geçti/kaldı deme."
+            )
         windows_path = karar.entities.get("windows_user_path")
         if windows_path:
             extra += (
@@ -895,6 +913,7 @@ class Agent:
                         role="system",
                         content=self.response_engine.missing_tool_retry_instruction(
                             decision=self.last_intent,
+                            tools_used=turn_trace.tools_used,
                         ),
                     ))
                     continue
@@ -909,6 +928,11 @@ class Agent:
                     debug=self.debug_mode,
                 )
                 cevap = self.response_engine.ground_verified_tool_result(
+                    cevap,
+                    decision=self.last_intent,
+                    outcomes=tool_outcomes,
+                )
+                cevap = self.response_engine.ground_coding_result(
                     cevap,
                     decision=self.last_intent,
                     outcomes=tool_outcomes,

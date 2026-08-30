@@ -48,6 +48,17 @@ class ResponseEngine:
 
     HIGH_CONFIDENCE_ACTION = 0.90
     TOOL_RETRY_PREFIX = "ZORUNLU ARAÇ YENİDEN DENEMESİ —"
+    _CODE_EVIDENCE = {
+        "CODE_INSPECT": (
+            frozenset({"inspect_project", "code_search", "read_file", "list_directory"}),
+        ),
+        "CODE_EDIT": (
+            frozenset({"inspect_project", "code_search", "read_file", "list_directory"}),
+            frozenset({"edit_file", "write_file"}),
+            frozenset({"run_project_tests"}),
+        ),
+        "CODE_TEST": (frozenset({"run_project_tests"}),),
+    }
 
     _TRACEBACK = re.compile(r"Traceback \(most recent call last\):.*", re.S | re.I)
     _TOOL_PREFIX = re.compile(r"^\[([A-Za-z0-9_\-]+)\]\s*sonucu:\s*", re.I)
@@ -232,6 +243,15 @@ class ResponseEngine:
         actually offered to the model.  Prompt wording and the model's prose
         are deliberately irrelevant.
         """
+        if (
+            decision.intent is Intent.CODING
+            and decision.requires_tool
+            and decision.confidence >= self.HIGH_CONFIDENCE_ACTION
+            and decision.subtype in self._CODE_EVIDENCE
+        ):
+            # The coding contract is deterministic, so a missing registration
+            # must fail honestly instead of silently opening the gate.
+            return True
         required = decision.required_tool
         return bool(
             decision.requires_tool
@@ -243,20 +263,31 @@ class ResponseEngine:
     def missing_required_tool_call(self, *, decision: IntentDecision,
                                    offered_tools: Collection[str],
                                    tools_used: Collection[str]) -> bool:
-        """Return true only when an evidenced action called no tool at all."""
-        return (
-            self.requires_tool_evidence(
-                decision=decision, offered_tools=offered_tools,
-            )
-            and not tools_used
-        )
+        """Return true when any mandatory evidence stage is absent."""
+        if not self.requires_tool_evidence(
+            decision=decision, offered_tools=offered_tools,
+        ):
+            return False
+        used = set(tools_used)
+        groups = self._CODE_EVIDENCE.get(decision.subtype or "")
+        if groups is not None:
+            return any(not (set(group) & used) for group in groups)
+        required = decision.required_tool
+        return bool(required and required not in used)
 
-    def missing_tool_retry_instruction(self, *, decision: IntentDecision) -> str:
+    def missing_tool_retry_instruction(self, *, decision: IntentDecision,
+                                       tools_used: Collection[str] = ()) -> str:
         """One private corrective instruction for a missing action call."""
-        required = decision.required_tool or "gerekli araç"
+        groups = self._CODE_EVIDENCE.get(decision.subtype or "")
+        if groups is not None:
+            used = set(tools_used)
+            missing = ["/".join(sorted(group)) for group in groups if not (set(group) & used)]
+            required = ", ardından ".join(missing) or "gerekli kod kanıtı"
+        else:
+            required = decision.required_tool or "gerekli araç"
         return (
-            f"{self.TOOL_RETRY_PREFIX} Önceki denemede hiçbir araç çağırmadın. "
-            f"Bu yüksek güvenli eylem isteği için şimdi {required} aracını çağır. "
+            f"{self.TOOL_RETRY_PREFIX} Önceki denemede zorunlu işlem kanıtı eksik kaldı. "
+            f"Bu yüksek güvenli istek için şimdi {required} araç kanıtını tamamla. "
             "Çağıramıyorsan başarı, gerekçe veya URL uydurma; işlemi "
             "yapamadığını açıkça söyle."
         )
@@ -310,6 +341,53 @@ class ResponseEngine:
         if not isinstance(message, str) or not message.strip():
             return text
         return self.redact_secrets(message.strip())
+
+    def ground_coding_result(self, text: str, *, decision: IntentDecision,
+                             outcomes: dict[str, object]) -> str:
+        """Render edit/test completion only from verified tool outcomes.
+
+        Free-form model prose remains useful for source analysis, but it is
+        never the authority for the operational claims "I changed it" or
+        "tests passed". Those two claims are replaced with paths and exit
+        codes emitted by the tools that actually performed the work.
+        """
+        if decision.intent is not Intent.CODING:
+            return text
+        subtype = decision.subtype or ""
+        if subtype not in {"CODE_EDIT", "CODE_TEST"}:
+            return text
+        test_result = outcomes.get("run_project_tests")
+        if (
+            test_result is None
+            or not getattr(test_result, "ok", False)
+            or getattr(test_result, "verified", None) is not True
+        ):
+            return text
+        test_data = getattr(test_result, "data", None)
+        if not isinstance(test_data, dict) or test_data.get("passed") is not True:
+            return text
+        framework = str(test_data.get("framework") or "proje")
+        exit_code = test_data.get("exit_code")
+        verification = (
+            f"{framework} testleri gerçekten geçti (çıkış kodu {exit_code})."
+        )
+        if subtype == "CODE_TEST":
+            return f"Test doğrulaması tamamlandı: {verification}"
+
+        edit_result = outcomes.get("edit_file") or outcomes.get("write_file")
+        if (
+            edit_result is None
+            or not getattr(edit_result, "ok", False)
+            or getattr(edit_result, "verified", None) is not True
+        ):
+            return text
+        edit_data = getattr(edit_result, "data", None)
+        path = edit_data.get("path") if isinstance(edit_data, dict) else None
+        target = str(path or "dosya")
+        return (
+            f"Kod değişikliği gerçekten uygulandı: {target}. "
+            f"Test doğrulaması tamamlandı: {verification}"
+        )
 
     def error(self, exc: BaseException, *, debug: bool = False) -> str:
         if debug:

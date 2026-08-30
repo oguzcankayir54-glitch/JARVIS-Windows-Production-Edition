@@ -62,16 +62,22 @@ class ToolRouter:
 
     def names_for(self, decision: IntentDecision, user_text: str) -> set[str]:
         if decision.intent is Intent.CODING:
-            allowed = {"read_file", "list_directory"}
+            if decision.subtype == "CODE_ADVICE":
+                return set()
+            allowed = {
+                "inspect_project", "code_search", "read_file", "list_directory",
+            }
             text = katla(user_text)
-            if any(k in text for k in (
+            if decision.subtype == "CODE_EDIT" or any(k in text for k in (
                 "duzelt", "degistir", "yaz", "olustur", "ekle", "refactor", "uygula"
             )):
-                allowed.add("write_file")
-            if any(k in text for k in (
+                allowed.update({
+                    "edit_file", "write_file", "run_project_tests", "git_diff",
+                })
+            elif decision.subtype == "CODE_TEST" or any(k in text for k in (
                 "testleri calistir", "komutu calistir", "terminalde calistir"
             )):
-                allowed.add("run_terminal_command")
+                allowed.add("run_project_tests")
             return allowed
 
         if decision.intent is Intent.TASK and decision.subtype == "SERVICE_CASE":

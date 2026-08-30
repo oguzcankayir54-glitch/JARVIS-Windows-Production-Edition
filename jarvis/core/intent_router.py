@@ -134,6 +134,15 @@ class IntentRouter:
         "hata", "bug", "duzelt", "debug", "incele", "refactor", "optimize",
         "iyilestir", "test yaz", "uygula",
     )
+    _CODING_MUTATION = (
+        "duzelt", "degistir", "refactor", "optimize", "iyilestir",
+        "uygula", "test yaz", "ekle", "olustur",
+    )
+    _CODING_TEST = (
+        "testleri calistir", "testlerini calistir", "testleri kos",
+        "testlerini kos", "pytest calistir",
+        "test et", "testlerle dogrula",
+    )
     _CODE_SYNTAX = re.compile(
         r"(?:^|\W)(?:def|class|function|import|from|return|const|let|var)(?:\W|$)"
     )
@@ -344,11 +353,39 @@ class IntentRouter:
             self._CODE_SYNTAX.search(text)
         )
         coding_action = self._has(text, self._CODING_ACTION)
-        if self._has(text, self._CODING) or (coding_subject and coding_action) or (
-            "jarvis" in text and any(k in text for k in ("kod", ".py", "fonksiyon", "sinif"))
+        jarvis_code_request = "jarvis" in text and any(
+            key in text for key in ("kod", ".py", "fonksiyon", "sinif")
+        )
+        if (
+            self._has(text, self._CODING)
+            or self._has(text, self._CODING_TEST)
+            or (coding_subject and coding_action)
+            or jarvis_code_request
         ):
-            return self._d(Intent.CODING, 0.96, requires_tool=True,
-                           reason="kaynak kod üzerinde çalışma")
+            # An inline snippet can be explained without pretending that a
+            # repository was changed. Existing/project code work, however,
+            # must leave inspect/edit/test evidence in the tool trace.
+            inline_advice = bool(self._CODE_SYNTAX.search(text)) and not any(
+                marker in text for marker in (
+                    "dosya", "klasor", "proje", "repo", "jarvis", ".py",
+                    ".js", ".ts", ".go", ".rs",
+                )
+            )
+            if inline_advice:
+                return self._d(
+                    Intent.CODING, 0.96, requires_tool=False,
+                    subtype="CODE_ADVICE", reason="satır içi kod açıklaması",
+                )
+            if self._has(text, self._CODING_MUTATION):
+                subtype = "CODE_EDIT"
+            elif self._has(text, self._CODING_TEST):
+                subtype = "CODE_TEST"
+            else:
+                subtype = "CODE_INSPECT"
+            return self._d(
+                Intent.CODING, 0.96, requires_tool=True,
+                subtype=subtype, reason="kaynak kod üzerinde kanıtlı çalışma",
+            )
 
         if self._has(text, self._RAG_EXPLICIT):
             return self._d(Intent.RAG_QUERY, 0.97, requires_tool=True,

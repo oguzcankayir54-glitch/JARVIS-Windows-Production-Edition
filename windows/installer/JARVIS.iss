@@ -31,6 +31,9 @@ Source: "{#ProjectRoot}\pyproject.toml"; DestDir: "{tmp}\jarvis-kaynak"; Flags: 
 Source: "{#ProjectRoot}\kimlik.json"; DestDir: "{tmp}\jarvis-kaynak"; Flags: ignoreversion deleteafterinstall
 Source: "{#ProjectRoot}\README.md"; DestDir: "{tmp}\jarvis-kaynak"; Flags: ignoreversion deleteafterinstall
 Source: "{#ProjectRoot}\jarvis\*"; DestDir: "{tmp}\jarvis-kaynak\jarvis"; Flags: ignoreversion recursesubdirs createallsubdirs deleteafterinstall; Excludes: "__pycache__\*,*.pyc"
+; Panel HTML'i sunucu tarafında çalışma zamanında docs/mockups altından okunur.
+; Kaynak listesine eklenmezse kurulum başarılı görünür ancak / paneli 500 döner.
+Source: "{#ProjectRoot}\docs\mockups\jarvis-panel.html"; DestDir: "{tmp}\jarvis-kaynak\docs\mockups"; Flags: ignoreversion createallsubdirs deleteafterinstall
 Source: "{#ProjectRoot}\windows\JARVIS.exe"; DestDir: "{tmp}\jarvis-kaynak\windows"; Flags: ignoreversion deleteafterinstall
 Source: "{#ProjectRoot}\windows\jarvis.ico"; DestDir: "{tmp}\jarvis-kaynak\windows"; Flags: ignoreversion deleteafterinstall
 Source: "{#ProjectRoot}\windows\jarvis.ini"; DestDir: "{tmp}\jarvis-kaynak\windows"; Flags: ignoreversion deleteafterinstall

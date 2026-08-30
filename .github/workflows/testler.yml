@@ -1,0 +1,96 @@
+# 1161 test, yalnızca biri hatırlarsa koşuyordu.
+#
+# Bu dosyanın varlık sebebi tek bir cümle: projenin kendi kuralı "ölçmeden
+# iddia etme" ve elle koşulan bir test paketi ölçüm değil, niyettir. Bu
+# depoya bir haftada beş commit atıldı ve hiçbiri otomatik doğrulanmadı;
+# iki depo birbirinden ayrıldı ve bunu kimse bir testten öğrenmedi.
+#
+# Depodaki diğer iş akışı (windows-installer-release.yml) yalnızca sürüm
+# çıkarken çalışıyor — yani kırık kod sürüm gününe kadar yaşayabiliyor.
+name: testler
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Aynı dala arka arkaya push atılırsa eskisini iptal et: doğrulanması
+# gereken şey son commit, aradakiler değil.
+concurrency:
+  group: testler-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # fail-fast kapalı: 3.10 patlarken 3.12'nin de patlayıp patlamadığını
+      # bilmek, hatanın sürüme mi yoksa koda mı ait olduğunu tek koşuda
+      # söylüyor. İkinci bir koşu beklemek bu bilgiyi geciktirir.
+      fail-fast: false
+      matrix:
+        # pyproject "requires-python = >=3.10" diyor. Alt sınır koşulmazsa o
+        # satır bir dilek olur: 3.11'de geçen bir sözdizimi 3.10'da patlar ve
+        # bunu ilk öğrenen kullanıcı olur.
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Bağımlılıklar
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Testler
+        # Ağ isteyen tek test (tests/test_edge.py) JARVIS_EDGE_TEST olmadan
+        # atlanıyor; burada bilerek ayarlanmıyor. CI'ın Microsoft'un resmî
+        # olmayan bir ucuna bağlı olması, kendi kodumuz yüzünden değil
+        # başkasının kesintisi yüzünden kırmızı olmak demektir.
+        run: python -m pytest -q --durations=10
+        env:
+          # Hiçbir test stdin'den onay bekleyemez. Beklerse iş, zaman aşımına
+          # kadar sebebi görünmeden asılı kalır — yerelde bunu bir kez yaşadık
+          # ve teşhisi yirmi dakika aldı.
+          JARVIS_NON_INTERACTIVE: "1"
+
+  paket:
+    # pyproject'in en üstündeki yorumun koşan hâli.
+    #
+    # Oradaki uyarı aynen şu: flat-layout hatası "yalnızca TEMİZ bir kurulumda
+    # çıkıyor — windows/ klasörü eklenmeden önce kurulmuş bir ortam çalışmaya
+    # devam ediyor, yani geliştirme makinesinde hiçbir belirti vermeden yeni
+    # makinede patlıyor." Bir yorumun anlattığı hata, o yorumun yanında
+    # duran bir testle yakalanmaz; temiz bir ortam gerekir.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Tekerlek üret
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+
+      - name: windows/ pakete girmemeli
+        # Bu tam olarak flat-layout kazasının belirtisi. `!` ile: bulunursa
+        # iş kırmızı olur.
+        run: "! unzip -l dist/*.whl | grep -q 'windows/'"
+
+      - name: Boş bir ortamda kurulup açılıyor mu
+        # Ek bağımlılık YOK (dev/mikrofon/kamera/ses hiçbiri). Yalnızca
+        # pyproject'in zorunlu saydıkları kuruluyor; içe aktarılan modüller
+        # de bilerek isteğe bağlı bağımlılığı olmayanlar.
+        run: |
+          python -m venv /tmp/temiz
+          /tmp/temiz/bin/pip install dist/*.whl
+          /tmp/temiz/bin/python -c "import jarvis, jarvis.core.agent, jarvis.diagnostics.monitor; print('temiz kurulum ok')"

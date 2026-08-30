@@ -76,12 +76,21 @@ class OllamaProvider:
         self._base_think = self.think
 
     def apply_reasoning(self, level: int) -> None:
-        """Apply a bounded task profile; level 0 is handled by Agent."""
+        """Apply a bounded task profile without enabling unsupported thinking.
+
+        ``think`` is an explicit capability switch, not merely a sampling
+        preference.  Models such as Qwen 2.5 reject ``think=true`` with HTTP
+        400, so a high reasoning level must never turn it on when the operator
+        left ``JARVIS_OLLAMA_THINK`` disabled.
+        """
         profile = profile_for(level)
         self.temperature = profile.temperature if level else self._base_temperature
         self.top_p = profile.top_p if level else self._base_top_p
         self.num_predict = profile.num_predict if level else self._base_num_predict
-        self.think = profile.thinking if level >= 4 else self._base_think
+        self.think = (
+            self._base_think if not level
+            else bool(self._base_think and profile.thinking)
+        )
 
     def warmup(self) -> None:
         """Load the model once before the first user turn."""

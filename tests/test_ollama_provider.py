@@ -213,12 +213,20 @@ def test_provider_defaults_are_conservative():
     assert p.temperature <= 0.5 and p.repeat_penalty >= 1.0
 
 
-def test_reasoning_profile_bounds_generation_and_thinking():
+def test_reasoning_profile_bounds_generation_without_enabling_thinking():
     p = OllamaProvider("http://x", "m", num_predict=512, think=False)
     p.apply_reasoning(1)
     assert p.num_predict == 192 and p.think is False
     p.apply_reasoning(5)
-    assert p.num_predict == 1280 and p.think is True
+    assert p.num_predict == 1280 and p.think is False
+
+
+def test_explicit_thinking_switch_applies_only_to_deep_profiles():
+    p = OllamaProvider("http://x", "thinking-model", think=True)
+    p.apply_reasoning(1)
+    assert p.think is False
+    p.apply_reasoning(5)
+    assert p.think is True
 
 
 def test_assistant_tool_calls_are_encoded_back_to_ollama(monkeypatch):

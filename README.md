@@ -222,7 +222,7 @@ pytest -q
 
 Mevcut doğrulama tabanı:
 
-- 1132 otomatik test
+- 1200'ün üzerinde otomatik test
 - Python kaynak derleme kontrolü
 - Windows kurulum ve başlatıcı regresyon testleri
 - Paket/ZIP içinde sır bulunmadığını doğrulayan testler
@@ -230,6 +230,15 @@ Mevcut doğrulama tabanı:
 
 Donanıma bağlı mikrofon, kamera, GPU, Ollama ve ses sağlayıcıları gerçek hedef
 sistemde ayrıca kabul testinden geçirilmelidir.
+
+OpenCV, Edge ve gerçek Piper entegrasyonlarını da geliştirici ortamında
+çalıştırmak için:
+
+```bash
+pip install -e ".[dev,kamera,ses,ses-yerel]"
+jarvis-ses --piper-kur
+JARVIS_EDGE_TEST=1 pytest -q
+```
 
 ## Proje yapısı
 

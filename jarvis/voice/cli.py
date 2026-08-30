@@ -20,6 +20,19 @@ from .tts import (ElevenLabsTTS, TTSError, find_player, play_stream, save_stream
 _ELEVENLABS_KEY_LEN = 51
 
 
+def configure_utf8_console() -> None:
+    """Keep Turkish status output from crashing legacy Windows consoles."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="backslashreplace")
+            except (OSError, ValueError):
+                # Captured/closed streams may reject reconfiguration. Output
+                # remains best-effort; voice setup itself must still run.
+                pass
+
+
 def _key_health(key: str) -> list[str]:
     """Report anything suspicious about the key without revealing it.
 
@@ -529,6 +542,7 @@ def _cmd_speak(cfg, text: str, save_to: str | None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_utf8_console()
     parser = argparse.ArgumentParser(
         prog="jarvis-ses", description="Yerel veya bulut ses ayarlarını doğrula ve metni seslendir."
     )

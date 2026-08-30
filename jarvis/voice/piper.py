@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Iterator
@@ -54,6 +55,32 @@ ZAMAN_ASIMI = 120.0
 PARCA = 8192
 
 
+def _binary_yolu(binary: str) -> str | None:
+    """Find Piper on PATH or next to the active virtualenv's Python.
+
+    Windows launcher and direct ``.venv/bin/jarvis-*`` invocations do not
+    necessarily activate the virtual environment first.  In that case the
+    console script installed by ``piper-tts`` is beside ``sys.executable``
+    but absent from PATH.
+    """
+    bulunan = shutil.which(binary)
+    if bulunan:
+        return bulunan
+
+    ham = Path(binary).expanduser()
+    if ham.is_absolute() or ham.parent != Path("."):
+        return None
+
+    # Do not resolve the venv Python symlink: its target is the base Python,
+    # while console scripts live beside the symlink inside the venv.
+    kok = Path(sys.executable).expanduser().parent
+    adaylar = (kok / ham.name, kok / f"{ham.name}.exe")
+    for aday in adaylar:
+        if aday.is_file():
+            return str(aday)
+    return None
+
+
 class PiperTTS:
     """Local neural speech through the ``piper`` binary."""
 
@@ -87,14 +114,15 @@ class PiperTTS:
                 f"Modelin yapılandırma dosyası eksik: {yapilandirma}\n"
                 "    Modeli .onnx.json dosyasıyla birlikte indirin."
             )
-        if shutil.which(self.binary) is None:
+        if _binary_yolu(self.binary) is None:
             raise TTSError(
                 f"'{self.binary}' bulunamadı. Kurmak için:\n"
                 "    pip install piper-tts"
             )
 
     def _komut(self, output: str = "-") -> list[str]:
-        komut = [self.binary, "-m", str(self.model), "-f", output,
+        komut = [_binary_yolu(self.binary) or self.binary,
+                 "-m", str(self.model), "-f", output,
                  "--length-scale", f"{1.0 / self.speed:.3f}"]
         if self.cuda:
             komut.append("--cuda")
@@ -188,7 +216,7 @@ def piper_hazir(model: Path | str, binary: str = "piper") -> str:
     and the failure surfaces mid-conversation instead of at start-up where it
     can be acted on.
     """
-    if shutil.which(binary) is None:
+    if _binary_yolu(binary) is None:
         return ("Piper kurulu değil.\n"
                 "    pip install piper-tts")
     yol = Path(model).expanduser()

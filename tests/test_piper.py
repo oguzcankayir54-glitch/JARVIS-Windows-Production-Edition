@@ -14,7 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from jarvis.voice.piper import PiperTTS, VARSAYILAN_SES, indirme_yolu, piper_modeli, ses_klasoru
+from jarvis.voice.piper import (
+    PiperTTS,
+    VARSAYILAN_SES,
+    indirme_yolu,
+    piper_hazir,
+    piper_modeli,
+    ses_klasoru,
+)
 from jarvis.voice.tts import NullTTS, TTSError, build_tts
 
 ANAHTAR = "sk_" + "a" * 48
@@ -164,6 +171,25 @@ def test_a_missing_binary_says_how_to_install_it(tmp_path):
     assert "pip install piper-tts" in str(exc.value)
 
 
+def test_piper_is_found_next_to_virtualenv_python_without_path(tmp_path, monkeypatch):
+    """The packaged launcher calls the venv entry point without activation."""
+    bin_dir = tmp_path / "venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    python = bin_dir / "python"
+    python.write_bytes(b"")
+    piper = bin_dir / "piper"
+    piper.write_bytes(b"")
+    monkeypatch.setattr("sys.executable", str(python))
+    monkeypatch.setattr("shutil.which", lambda ad: None)
+
+    model = tmp_path / "ses.onnx"
+    model.write_bytes(b"sahte")
+    (tmp_path / "ses.onnx.json").write_text("{}")
+
+    assert piper_hazir(model) == ""
+    assert PiperTTS(model)._komut()[0] == str(piper)
+
+
 def test_empty_text_is_refused(tmp_path):
     with pytest.raises(TTSError):
         list(PiperTTS(tmp_path / "ses.onnx").synthesize("   "))
@@ -255,12 +281,10 @@ def test_gpu_is_only_requested_when_asked(tmp_path):
 # ---------------- gerçek piper (varsa) ----------------
 
 def _gercek_piper(tmp_path_factory):
-    import shutil
-    if shutil.which("piper") is None:
-        pytest.skip("piper kurulu değil")
     model = piper_modeli(VARSAYILAN_SES, Path("~/.jarvis"))
-    if not model.is_file():
-        pytest.skip("Türkçe ses modeli indirilmemiş (jarvis-ses --piper-kur)")
+    eksik = piper_hazir(model)
+    if eksik:
+        pytest.skip(eksik.splitlines()[0])
     return model
 
 
@@ -281,6 +305,7 @@ def test_real_piper_produces_playable_turkish_audio(tmp_path_factory):
 
 def test_piper_without_the_binary_is_not_reported_as_available(tmp_path, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda ad: None)
+    monkeypatch.setattr("sys.executable", str(tmp_path / "venv" / "bin" / "python"))
     saglayici = build_tts(None, None, "m", provider="piper", data_dir=str(tmp_path))
     assert saglayici.available is False
     assert "pip install piper-tts" in saglayici.reason

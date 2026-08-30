@@ -519,3 +519,24 @@ def test_the_diagnosis_never_prints_the_key():
 def test_invisible_characters_are_still_reported():
     assert "boşluk" in _teshis(" " + GECERLI_ANAHTAR)
     assert "tırnak" in _teshis('"' + GECERLI_ANAHTAR + '"')
+
+
+def test_voice_cli_configures_legacy_windows_console_for_utf8(monkeypatch):
+    from jarvis.voice.cli import configure_utf8_console
+
+    class _Console:
+        def __init__(self):
+            self.settings = None
+
+        def reconfigure(self, **settings):
+            self.settings = settings
+
+    stdout = _Console()
+    stderr = _Console()
+    monkeypatch.setattr("sys.stdout", stdout)
+    monkeypatch.setattr("sys.stderr", stderr)
+
+    configure_utf8_console()
+
+    assert stdout.settings == {"encoding": "utf-8", "errors": "backslashreplace"}
+    assert stderr.settings == {"encoding": "utf-8", "errors": "backslashreplace"}

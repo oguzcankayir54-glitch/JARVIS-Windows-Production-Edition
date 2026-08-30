@@ -120,6 +120,23 @@ class IntentRouter:
         "authentication kod", "python dosya", "py dosya", "kod yaz", "kodu duzelt",
         "kodundaki hata", "koddaki hata",
     )
+    # Natural coding requests rarely keep the object and action adjacent.
+    # For example, "Şu Python hatasını açıklayıp düzelt" contains neither
+    # "hatayı düzelt" nor "kodu düzelt" verbatim.  Pairing a code-specific
+    # subject with an engineering action catches that wording without turning
+    # generic questions such as "Bu hata neden oluyor?" into CODING.
+    _CODING_SUBJECT = (
+        "source", "python", "javascript", "typescript", "java", "golang",
+        "rust", "php", "sql", "fonksiyon", "metot", "sinif", "exception",
+        "traceback", ".py", ".js", ".ts",
+    )
+    _CODING_ACTION = (
+        "hata", "bug", "duzelt", "debug", "incele", "refactor", "optimize",
+        "iyilestir", "test yaz", "uygula",
+    )
+    _CODE_SYNTAX = re.compile(
+        r"(?:^|\W)(?:def|class|function|import|from|return|const|let|var)(?:\W|$)"
+    )
     _RAG_EXPLICIT = (
         "bilgi tabaninda", "bilgi tabanindan", "dokumaninda", "dokumanda", "pdf'de",
         "pdf de", "pdfde", "bu pdf", "belgede", "belgelerde", "belgeden", "yerel belgelerde",
@@ -286,7 +303,11 @@ class IntentRouter:
         # Coding precedes generic document/file routing.  "Jarvis klasöründeki
         # authentication kodunu incele" must not become RAG_QUERY merely
         # because it contains "klasör/proje".
-        if self._has(text, self._CODING) or (
+        coding_subject = self._has(text, self._CODING_SUBJECT) or bool(
+            self._CODE_SYNTAX.search(text)
+        )
+        coding_action = self._has(text, self._CODING_ACTION)
+        if self._has(text, self._CODING) or (coding_subject and coding_action) or (
             "jarvis" in text and any(k in text for k in ("kod", ".py", "fonksiyon", "sinif"))
         ):
             return self._d(Intent.CODING, 0.96, requires_tool=True,

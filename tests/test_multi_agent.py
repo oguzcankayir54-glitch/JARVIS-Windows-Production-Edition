@@ -20,6 +20,17 @@ def test_supervisor_routes_only_specialist_intents():
     assert supervisor.route(_decision(Intent.CHAT)) is None
 
 
+def test_natural_inline_python_fix_request_reaches_coder():
+    cfg = Config(llm_provider="mock", non_interactive=True, multi_agent_enabled=True)
+    agent = build_agent(cfg, memory=MemoryStore(":memory:"))
+
+    agent.ask("Şu Python hatasını açıklayıp düzelt: def ilk(xs): return xs[0].")
+
+    assert agent.last_delegation is not None
+    assert agent.last_delegation.role is AgentRole.CODER
+    assert agent.last_trace.specialist_role == "coder"
+
+
 def test_supervisor_is_opt_in_and_delegation_depth_is_hard_limited():
     assert Supervisor(enabled=False).route(_decision(Intent.CODING)) is None
     supervisor = Supervisor(enabled=True, max_delegations=99)

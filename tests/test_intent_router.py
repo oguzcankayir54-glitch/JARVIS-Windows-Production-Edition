@@ -26,6 +26,29 @@ def test_spec_examples_route_correctly(text, expected):
     assert got.intent is expected, got
 
 
+@pytest.mark.parametrize("text", [
+    "Şu Python hatasını açıklayıp düzelt: def ilk(xs): return xs[0].",
+    "Bu JavaScript fonksiyonunda neden bug var, incele.",
+    "Traceback veren metodu debug edip iyileştir.",
+])
+def test_natural_coding_requests_route_to_coder(text):
+    assert IntentRouter().route(text).intent is Intent.CODING
+
+
+@pytest.mark.parametrize("text", [
+    "Bu hata neden oluyor?",
+    "Python nedir?",
+    "Fonksiyon nedir?",
+])
+def test_generic_error_and_concept_questions_stay_chat(text):
+    assert IntentRouter().route(text).intent is Intent.CHAT
+
+
+def test_windows_error_code_research_is_not_source_coding():
+    got = IntentRouter().route("İnternette bu hata kodunu araştır: 0x80070005.")
+    assert got.intent is Intent.WEB_RESEARCH
+
+
 def test_identity_statement_is_not_rag():
     got = IntentRouter().route("Ben senin geliştiricinim.")
     assert got.subtype == "IDENTITY"

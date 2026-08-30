@@ -12,12 +12,18 @@ import urllib.request
 from dataclasses import asdict, dataclass
 from typing import Any, Callable
 
+from ..core.sayac import SAYACLAR
 from ..tools.system_tools import (
     get_disk_health,
     get_gpu_temperature,
     get_ram_usage,
     get_system_info,
 )
+
+#: Bu kadar yutulan hatadan sonra "Core" uyarıya düşüyor. Beş, tek bir
+#: geçici arıza ile süregelen bir arızayı ayıran en küçük sayı: açılışta
+#: bir kez patlayan bir yoklama paneli kalıcı olarak sarıya boyamamalı.
+YUTULAN_ESIGI = 5
 
 
 @dataclass(frozen=True)
@@ -208,6 +214,22 @@ def collect_health(agent, *, tts=None, stt=None,
                               f"READY · {tool_count}" if tool_count else "EMPTY",
                               required=True))
 
+    # Yutulan hatalar. Bunların hiçbiri bir turu düşürmedi — düşürmemeleri
+    # doğru. Ama düşürmedikleri için hiçbir yerde de görünmüyorlardı:
+    # bilgi indeksi kırk kez okunamadıysa JARVIS kırk turda bilgi tabanı
+    # yokmuş gibi cevap verir ve tek belirti "bilmiyor" olur.
+    yutulan = SAYACLAR.dokum()
+    toplam_yutulan = sum(d.adet for d in yutulan)
+    checks.append(HealthCheck(
+        "yutulan_hata", "SWALLOWED ERRORS", "Core",
+        # Tek bir geçici arıza gürültü; YUTULAN_ESIGI tanesi bir örüntü.
+        # Sıfırdan büyük her sayıyı uyarıya çevirmek, açılışta bir kez
+        # patlayan bir yoklamayı yeniden başlatmaya kadar kalıcı kılardı.
+        "ready" if toplam_yutulan < YUTULAN_ESIGI else "warning",
+        "NONE" if not toplam_yutulan else
+        f"{toplam_yutulan} · " + ", ".join(f"{d.ad}={d.adet}" for d in yutulan[:3]),
+    ))
+
     categories: dict[str, dict[str, Any]] = {}
     for category in ("Core", "LLM", "GPU", "Voice", "Memory", "Tools", "Dependencies"):
         group = [c for c in checks if c.category == category]
@@ -229,4 +251,8 @@ def collect_health(agent, *, tts=None, stt=None,
         "score": score, "status": status, "checked_at": time.time(),
         "platform": platform.system(), "categories": categories,
         "checks": [c.as_dict() for c in checks],
+        # Tek satırlık özet yukarıdaki denetimde; dökümü ayrı, çünkü
+        # panelin göstereceği şey "hangi sayaç" — bir denetim satırına
+        # sığmıyor ve her sayaç için ayrı denetim uydurmak puanı bozardı.
+        "yutulan": [asdict(d) for d in yutulan],
     }

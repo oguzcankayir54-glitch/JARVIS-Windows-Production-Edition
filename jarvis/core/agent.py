@@ -328,7 +328,9 @@ class Agent:
         if self.memory is not None:
             self.memory.add_message(self.session_id, "assistant", cevap)
         self._baglami_daralt()
-        self.state.transition(JarvisState.SPEAKING)
+        # Text production is complete here; actual audio playback is owned by
+        # the panel/browser lifecycle. Marking SPEAKING for this zero-duration
+        # handoff made the UI say HAZIR while sound was still playing.
         self.state.transition(JarvisState.STANDBY)
         if trace is not None and trace_started is not None:
             self._finish_trace(trace, trace_started)
@@ -955,7 +957,8 @@ class Agent:
                 if self.memory is not None:
                     self.memory.add_message(self.session_id, "assistant", cevap)
                 self._baglami_daralt()
-                self.state.transition(JarvisState.SPEAKING)
+                # Audio playback has not started yet. The panel reports its
+                # real ``playing``/``ended`` lifecycle separately.
                 self.state.transition(JarvisState.STANDBY)
                 self._finish_trace(turn_trace, trace_started)
                 return cevap

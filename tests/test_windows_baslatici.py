@@ -166,6 +166,12 @@ def test_the_formatter_reports_the_tree_as_correct():
     assert sonuc.returncode == 0, sonuc.stdout + sonuc.stderr
 
 
+def test_windows_installer_includes_the_coding_test_runtime():
+    """Kurulu JARVIS, geçtiğini iddia edeceği pytest'i gerçekten çalıştırabilmeli."""
+    installer = _oku("src/kur-windows.ps1").decode("utf-8-sig")
+    assert '-e "$Uygulama[kod]"' in installer
+
+
 # ---------------- uygulama penceresi ve giriş ----------------
 
 def _kaynak() -> str:

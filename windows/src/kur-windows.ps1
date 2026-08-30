@@ -190,7 +190,7 @@ Yaz "    pip guncelleniyor..." "DarkGray"
 & $VenvPy -m pip install --upgrade pip --quiet 2>&1 | Out-Null
 
 Yaz "    J.A.R.V.I.S. kuruluyor..." "DarkGray"
-& $VenvPy -m pip install --quiet -e $Uygulama
+& $VenvPy -m pip install --quiet -e "$Uygulama[kod]"
 if ($LASTEXITCODE -ne 0) {
     Hata "Bagimliliklar kurulamadi."
     exit 1

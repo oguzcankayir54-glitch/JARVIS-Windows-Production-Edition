@@ -33,6 +33,7 @@ from .tools.app_tools import register_app_tools
 from .tools.rag_tools import register_rag_tools
 from .tools.web_tools import register_web_tools
 from .tools.shell_tools import register_shell_tools
+from .tools.code_tools import register_code_tools
 from .tools.system_tools import get_gpu_temperature, get_system_info, register_system_tools
 from .tools.windows_tools import register_windows_tools
 from .tools.desktop_tools import (
@@ -142,6 +143,7 @@ def build_agent(
     register_windows_tools(registry)
     register_memory_tools(registry, store)
     register_file_tools(registry)
+    register_code_tools(registry)
     register_git_tools(registry)
     register_shell_tools(registry)
     register_case_tools(registry, case_store)

@@ -27,6 +27,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "Pillow>=10.0"]
+# Kod ajanının yapılandırılmış Python doğrulaması. Windows kurucusu bunu
+# açıkça yükler; test çalıştırma yine HIGH risk olarak kullanıcı onayındadır.
+kod = ["pytest>=7.0"]
 # Mikrofon. Kasten isteğe bağlı: kurulu değilse J.A.R.V.I.S. yine çalışır,
 # yalnızca mikrofon kapalı olur — birkaç yüz MB'lık model indirmesi ve
 # CTranslate2 bağımlılığı herkesin ödemesi gereken bir bedel değil.

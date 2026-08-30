@@ -41,6 +41,7 @@ from .konusma import (
 from .observability import RequestTrace, RequestTraceLog
 from .persona import build_system_prompt
 from .response_engine import ResponseEngine
+from .sayac import yut
 from .state import JarvisState, StateMachine
 from .tool_router import ToolRouter
 
@@ -385,8 +386,11 @@ class Agent:
         try:
             acik = self.cases.open_cases(limit=self.ACIK_VAKA_SINIRI)
             toplam = self.cases.count_open()
-        except Exception:
+        except Exception as exc:
             # The service log must never be the reason a turn fails.
+            # Yutuluyor ama sayılıyor: bu blok sessizce sık çalışırsa
+            # JARVIS açık vakaları hiç görmeden cevap veriyor demektir.
+            yut("vaka.okuma", exc)
             return None
         if not acik:
             return None
@@ -442,8 +446,12 @@ class Agent:
             return None
         try:
             durum = self.knowledge.stats()
-        except Exception:
+        except Exception as exc:
             # The index must never be the reason a turn fails.
+            # Bu sayacın asıl değeri burada: indeks okunamıyorsa JARVIS
+            # bilgi tabanı boşmuş gibi davranıyor ve bu, cevaplarda hiçbir
+            # hata belirtisi vermeden görünüyor — yalnızca "bilmiyor".
+            yut("bilgi.indeks", exc)
             return None
 
         if not durum.get("parca"):
@@ -477,7 +485,8 @@ class Agent:
             return True
         try:
             return not self.knowledge.stats().get("parca")
-        except Exception:
+        except Exception as exc:
+            yut("bilgi.indeks", exc)
             return True
 
     def ask(self, user_text: str, *, original_text: str | None = None,

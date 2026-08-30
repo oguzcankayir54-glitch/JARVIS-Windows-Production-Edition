@@ -13,7 +13,7 @@ from .bootstrap import build_agent
 from .config import load_config
 from .core.state import JarvisState
 from .core.asistan import asistan_bul
-from .voice.tts import TTSError, play_stream, tts_from_config
+from .voice.tts import TTSError, play_stream_kesilebilir, tts_from_config
 
 
 def _banner(provider: str, voice: str, asistan=None) -> None:
@@ -70,12 +70,33 @@ def main(argv: list[str] | None = None) -> int:
     _banner(cfg.llm_provider, tts.name if speak else "kapalı", asistan)
     agent.state.transition(JarvisState.STANDBY)
 
+    #: Süren seslendirme. JARVIS konuşurken de yazabilmek için oynatma
+    #: artık bloklamıyor; bir sonraki tur başladığında kesiliyor.
+    oynatim = None
+
     while True:
         try:
             text = input("\nsen › ").strip()
         except (EOFError, KeyboardInterrupt):
+            if oynatim is not None:
+                oynatim.kes()
             print(f"\n{etiket} › Görüşürüz.")
             return 0
+
+        # Sözünü kesme. Kullanıcı bir şey yazdıysa JARVIS'in söyleyeceği
+        # şeyin geri kalanı artık geçersiz: yanlış anlaşılmış bir cevabı
+        # sonuna kadar dinlemek zorunda kalmanın tek sebebi, oynatmanın
+        # bloklamasıydı.
+        if oynatim is not None:
+            if oynatim.calisiyor:
+                oynatim.kes()
+                print("   (ses kesildi)")
+            if oynatim.hata is not None:
+                print(f"   (ses hatası: {oynatim.hata})")
+                speak = False
+            oynatim = None
+            agent.state.transition(JarvisState.STANDBY)
+
         if not text:
             continue
         if text.lower() in {"exit", "quit", "çık", "kapan"}:
@@ -88,14 +109,19 @@ def main(argv: list[str] | None = None) -> int:
         if speak:
             try:
                 agent.state.transition(JarvisState.SPEAKING)
-                if not play_stream(tts.synthesize(answer)):
+                # Beklemeden dönüyor: konuşma sürerken istem geri geliyor.
+                # Sentezleyici hatası artık besleme parçacığında doğduğu
+                # için burada değil, bir sonraki turun başında görülüyor —
+                # oradaki ``oynatim.hata`` denetimi bunun karşılığı.
+                oynatim = play_stream_kesilebilir(tts.synthesize(answer))
+                if oynatim is None:
                     print("   (ses oynatıcı yok — 'sudo apt install ffmpeg')")
                     speak = False
+                    agent.state.transition(JarvisState.STANDBY)
             except TTSError as exc:
                 # A voice failure must not end the conversation.
                 print(f"   (ses hatası: {exc})")
                 speak = False
-            finally:
                 agent.state.transition(JarvisState.STANDBY)
 
 

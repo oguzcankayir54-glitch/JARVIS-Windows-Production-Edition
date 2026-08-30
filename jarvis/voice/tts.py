@@ -15,6 +15,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -362,29 +363,127 @@ def find_player() -> tuple[str, list[str]] | None:
     return None
 
 
+class Oynatim:
+    """Süren bir seslendirme — beklenebilir ya da **kesilebilir**.
+
+    Akış eklendiğinden beri ilk kelime hızlı geliyor; kesme ise cevabın
+    tamamıyla ilgili. Ölçülen 250 token'lık bir cevap 3,80 saniye
+    konuşuyor ve JARVIS soruyu yanlış anladıysa o 3,80 saniyeyi sonuna
+    kadar dinlemekten başka yol yok. Günlük kullanılan bir asistanla iyi
+    bir demo arasındaki fark çoğu zaman tam burası: hızdan çok "hızlı"
+    hissettiriyor.
+
+    Kesmek, oynatıcıyı **öldürmek** demek — tamponu boşaltmayı beklemek
+    değil. Sözünü kesince yarım saniye daha konuşan bir asistan,
+    kesilmemiş sayılır.
+
+    Besleme ayrı bir iş parçacığında olduğu için sentezleyici hatası da
+    orada doğuyor; çağıran tarafın ``try`` bloğuna düşmüyor. O yüzden
+    yakalanıp :attr:`hata` içinde saklanıyor: beklemeyi bitiren taraf
+    bakmakla yükümlü, yoksa ses hatası sessizce kaybolur.
+    """
+
+    def __init__(self, proc: subprocess.Popen, besleyici: threading.Thread,
+                 iptal: threading.Event, *, timeout: float = 120.0) -> None:
+        self._proc = proc
+        self._besleyici = besleyici
+        self._iptal = iptal
+        self._timeout = max(1.0, float(timeout))
+        self.kesildi = False
+        #: Besleme sırasında doğan istisna (çoğunlukla :class:`TTSError`).
+        self.hata: BaseException | None = None
+
+    @property
+    def calisiyor(self) -> bool:
+        return self._proc.poll() is None
+
+    def kes(self) -> None:
+        """Şimdi sus. Zaten bitmişse hiçbir şey yapmıyor."""
+        self.kesildi = self.calisiyor
+        self._iptal.set()
+        if self.calisiyor:
+            self._proc.kill()
+        self._topla()
+
+    def bekle(self, timeout: float | None = None) -> bool:
+        """Bitene kadar bekle. Kesildiyse False döner."""
+        try:
+            self._proc.wait(timeout=self._timeout if timeout is None else timeout)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+        self._topla()
+        return not self.kesildi
+
+    def _topla(self) -> None:
+        self._iptal.set()
+        # Besleyici öldürülmüş bir boruya yazarken BrokenPipeError alıp
+        # çıkıyor; join burada asılı kalmaz. Yine de sınırlı bekleniyor:
+        # sesin kapanması konuşmanın devamını rehin alamaz.
+        self._besleyici.join(timeout=2.0)
+        if self.calisiyor:
+            self._proc.kill()
+
+
+def play_stream_kesilebilir(chunks: Iterator[bytes],
+                            timeout: float = 120.0) -> Oynatim | None:
+    """Sesi çalmaya başla ve **beklemeden** dön.
+
+    None dönerse oynatıcı kurulu değil — :func:`play_stream` ile aynı
+    sözleşme, çağıran taraf sesi kaybetmek yerine dosyaya yazabilir.
+    """
+    player = find_player()
+    if player is None:
+        return None
+    binary, args = player
+    proc = subprocess.Popen([binary, *args], stdin=subprocess.PIPE,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    iptal = threading.Event()
+    oynatim_kutusu: list[Oynatim] = []
+
+    def besle() -> None:
+        try:
+            assert proc.stdin is not None
+            for chunk in chunks:
+                if iptal.is_set():
+                    break
+                proc.stdin.write(chunk)
+        except (BrokenPipeError, ValueError, OSError):
+            # Kesilmiş bir oynatıcıya yazmak bunu üretiyor; beklenen son.
+            pass
+        except Exception as exc:  # sentezleyici hatası — kaybolmamalı
+            if oynatim_kutusu:
+                oynatim_kutusu[0].hata = exc
+        finally:
+            try:
+                if proc.stdin is not None and not proc.stdin.closed:
+                    proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+
+    besleyici = threading.Thread(target=besle, name="jarvis-ses-besleme",
+                                 daemon=True)
+    oynatim = Oynatim(proc, besleyici, iptal, timeout=timeout)
+    oynatim_kutusu.append(oynatim)
+    besleyici.start()
+    return oynatim
+
+
 def play_stream(chunks: Iterator[bytes]) -> bool:
     """Pipe audio chunks straight into a player as they arrive.
 
     Returns False when no player is installed, so the caller can fall back to
     saving a file instead of losing the audio.
+
+    Kesilebilir yolun bekleyen hâli — iki ayrı uygulama değil. Ayrı
+    yazılsalardı biri düzeltilip diğeri unutulurdu; bu depoda ``ask`` ile
+    ``ask_stream`` tam olarak bu yüzden ortak yardımcılara bölünmüştü.
     """
-    player = find_player()
-    if player is None:
+    oynatim = play_stream_kesilebilir(chunks)
+    if oynatim is None:
         return False
-    binary, args = player
-    proc = subprocess.Popen([binary, *args], stdin=subprocess.PIPE,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        assert proc.stdin is not None
-        for chunk in chunks:
-            proc.stdin.write(chunk)
-        proc.stdin.close()
-        proc.wait(timeout=120)
-    except (BrokenPipeError, subprocess.TimeoutExpired):
-        proc.kill()
-    finally:
-        if proc.poll() is None:
-            proc.kill()
+    oynatim.bekle()
+    if oynatim.hata is not None:
+        raise oynatim.hata
     return True
 
 

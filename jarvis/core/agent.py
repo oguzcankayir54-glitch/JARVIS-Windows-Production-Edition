@@ -778,12 +778,32 @@ class Agent:
         # capability family they need. ``araclari_sec`` remains available for
         # backward compatibility and will be retired/refined in Phase 6.
         schemas = self._intent_schemas(adaylar, self.last_intent, user_text)
+        offered_tool_names = {
+            str((schema.get("function") or {}).get("name") or "")
+            for schema in schemas
+        }
+        offered_tool_names.discard("")
 
         # Latest result per tool is the turn's factual execution evidence. A
         # controlled retry can replace an earlier failure with success.
         tool_outcomes: dict[str, ToolResult] = {}
+        missing_tool_retry_used = False
 
-        for _ in range(self.max_steps):
+        def clear_missing_tool_warning() -> None:
+            self.history = [
+                message for message in self.history
+                if not (
+                    message.role == "system"
+                    and message.content.startswith(
+                        self.response_engine.TOOL_RETRY_PREFIX
+                    )
+                )
+            ]
+
+        # A prose-only miss does not consume the normal tool-loop budget: the
+        # model gets exactly one corrected attempt, even when max_steps is 1.
+        tool_rounds = 0
+        while tool_rounds < self.max_steps:
             self._baglami_daralt()
             self.state.transition(JarvisState.THINKING)
             try:
@@ -803,16 +823,25 @@ class Agent:
                     response = self.llm.chat(self.history, tools=schemas)
                 else:
                     pieces: list[str] = []
+                    buffer_unverified_action = (
+                        self.response_engine.requires_tool_evidence(
+                            decision=self.last_intent,
+                            offered_tools=offered_tool_names,
+                        )
+                        and not turn_trace.tools_used
+                    )
                     for piece in stream_call(self.history, tools=schemas):
                         if not piece:
                             continue
                         streamed = True
                         pieces.append(piece)
-                        chunk_callback(piece)
+                        if not buffer_unverified_action:
+                            chunk_callback(piece)
                     response = getattr(self.llm, "son_yanit", None)
                     if not isinstance(response, LLMResponse):
                         response = LLMResponse(content="".join(pieces))
             except Exception as exc:
+                clear_missing_tool_warning()
                 self.events.publish(
                     "llm.error", {"model": self._trace_model_name(),
                                   "error_type": type(exc).__name__},
@@ -842,7 +871,30 @@ class Agent:
             )
 
             if not response.wants_tool:
+                missing_tool_call = self.response_engine.missing_required_tool_call(
+                    decision=self.last_intent,
+                    offered_tools=offered_tool_names,
+                    tools_used=turn_trace.tools_used,
+                )
+                if missing_tool_call and not missing_tool_retry_used:
+                    missing_tool_retry_used = True
+                    self.history.append(Message(
+                        role="system",
+                        content=self.response_engine.missing_tool_retry_instruction(
+                            decision=self.last_intent,
+                        ),
+                    ))
+                    continue
+
+                clear_missing_tool_warning()
                 cevap = self._kullanici_cevabi(response.content, user_text)
+                cevap = self.response_engine.ground_missing_tool_call(
+                    cevap,
+                    decision=self.last_intent,
+                    offered_tools=offered_tool_names,
+                    tools_used=turn_trace.tools_used,
+                    debug=self.debug_mode,
+                )
                 unresolved = [
                     getattr(result, "error", "")
                     for result in tool_outcomes.values()
@@ -851,7 +903,11 @@ class Agent:
                 cevap = self.response_engine.ground_tool_failures(
                     cevap, errors=unresolved, debug=self.debug_mode,
                 )
-                if chunk_callback is not None and not streamed:
+                # A guarded action stream is buffered until tool evidence is
+                # known, so its invented prose must never have reached the
+                # caller even when the provider did stream it.
+                action_was_buffered = missing_tool_call and not turn_trace.tools_used
+                if chunk_callback is not None and (not streamed or action_was_buffered):
                     chunk_callback(cevap)
                 self.history.append(Message(role="assistant", content=cevap))
                 self.durum = bekleyen_soruyu_yakala(self.durum, cevap)
@@ -863,6 +919,8 @@ class Agent:
                 self._finish_trace(turn_trace, trace_started)
                 return cevap
 
+            clear_missing_tool_warning()
+            tool_rounds += 1
             # Ollama'nın tool protokolünde araç sonucundan önce, aracı isteyen
             # assistant mesajı da sonraki isteğe geri gönderilmelidir. Yalnız
             # tool sonucunu eklemek küçük modellerde "bu sonuç neden geldi?"
@@ -923,6 +981,7 @@ class Agent:
                 )
 
         # Safety valve: too many tool rounds without a final answer.
+        clear_missing_tool_warning()
         self.state.transition(JarvisState.STANDBY)
         fallback = self._kullanici_cevabi(
             "Bu isteği birkaç adımda tamamlayamadım; daha net sorabilir misiniz?",

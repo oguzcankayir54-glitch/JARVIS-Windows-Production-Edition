@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, field
 
-from .intent_router import Intent
+from .intent_router import Intent, IntentDecision
 from .metin import katla
 
 
@@ -44,6 +45,9 @@ class ResponseValidation:
 
 class ResponseEngine:
     """Make backend/LLM output safe and natural for normal conversation."""
+
+    HIGH_CONFIDENCE_ACTION = 0.90
+    TOOL_RETRY_PREFIX = "ZORUNLU ARAÇ YENİDEN DENEMESİ —"
 
     _TRACEBACK = re.compile(r"Traceback \(most recent call last\):.*", re.S | re.I)
     _TOOL_PREFIX = re.compile(r"^\[([A-Za-z0-9_\-]+)\]\s*sonucu:\s*", re.I)
@@ -217,6 +221,72 @@ class ResponseEngine:
             detail = "; ".join(self.redact_secrets(item) for item in errors if item)
             return ("İşlem tamamlanamadı." + (f" {detail}" if detail else ""))
         return "İşlem tamamlanamadı. İlgili araç başarılı bir sonuç döndürmedi."
+
+    def requires_tool_evidence(self, *, decision: IntentDecision,
+                               offered_tools: Collection[str]) -> bool:
+        """Whether this turn must have execution evidence before success.
+
+        A conversational turn may correctly use no tool.  The gate therefore
+        requires all three independent signals: a high-confidence routed
+        action, an explicit required tool, and proof that the exact tool was
+        actually offered to the model.  Prompt wording and the model's prose
+        are deliberately irrelevant.
+        """
+        required = decision.required_tool
+        return bool(
+            decision.requires_tool
+            and decision.confidence >= self.HIGH_CONFIDENCE_ACTION
+            and required
+            and required in offered_tools
+        )
+
+    def missing_required_tool_call(self, *, decision: IntentDecision,
+                                   offered_tools: Collection[str],
+                                   tools_used: Collection[str]) -> bool:
+        """Return true only when an evidenced action called no tool at all."""
+        return (
+            self.requires_tool_evidence(
+                decision=decision, offered_tools=offered_tools,
+            )
+            and not tools_used
+        )
+
+    def missing_tool_retry_instruction(self, *, decision: IntentDecision) -> str:
+        """One private corrective instruction for a missing action call."""
+        required = decision.required_tool or "gerekli araç"
+        return (
+            f"{self.TOOL_RETRY_PREFIX} Önceki denemede hiçbir araç çağırmadın. "
+            f"Bu yüksek güvenli eylem isteği için şimdi {required} aracını çağır. "
+            "Çağıramıyorsan başarı, gerekçe veya URL uydurma; işlemi "
+            "yapamadığını açıkça söyle."
+        )
+
+    def ground_missing_tool_call(self, text: str, *, decision: IntentDecision,
+                                 offered_tools: Collection[str],
+                                 tools_used: Collection[str],
+                                 debug: bool = False) -> str:
+        """Make absent execution evidence authoritative over model prose.
+
+        This is the sibling of :meth:`ground_tool_failures`: that method owns
+        calls which ran and failed, while this one owns a required call which
+        never happened.  In either case model-written success text loses.
+        """
+        if not self.missing_required_tool_call(
+            decision=decision,
+            offered_tools=offered_tools,
+            tools_used=tools_used,
+        ):
+            return text
+        if debug:
+            required = decision.required_tool or "bilinmeyen"
+            return (
+                "İsteğinizi gerçekleştiremedim. "
+                f"{required} aracı sunuldu ancak model tarafından çağrılmadı."
+            )
+        return (
+            "İsteğinizi gerçekleştiremedim; gerekli işlem çalıştırılmadığı "
+            "için başarıyı doğrulayamıyorum."
+        )
 
     def error(self, exc: BaseException, *, debug: bool = False) -> str:
         if debug:

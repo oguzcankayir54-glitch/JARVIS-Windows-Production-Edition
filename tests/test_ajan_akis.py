@@ -97,6 +97,28 @@ def test_a_provider_without_streaming_still_answers():
     assert list(ajan.ask_stream("merhaba")) == ["tek parça cevap"]
 
 
+def test_unverified_streamed_action_prose_never_reaches_the_user():
+    """Streaming must not leak the invented success before validation."""
+    kayit = ToolRegistry()
+    kayit.register(Tool(
+        name="uygulama_ac",
+        description="test uygulama açma aracı",
+        risk=RiskLevel.LOW,
+        func=lambda ad: {"acildi": True, "uygulama": ad},
+        params=[Param("ad", "string", required=True)],
+    ))
+    llm = _AkanLLM(["Açıldı", " efendim."])
+    ajan = _ajan(llm, kayit)
+
+    chunks = list(ajan.ask_stream("Aygıt yöneticisini aç"))
+
+    assert llm.cagri_sayisi == 2
+    assert chunks == [
+        "İsteğinizi gerçekleştiremedim; gerekli işlem çalıştırılmadığı "
+        "için başarıyı doğrulayamıyorum."
+    ]
+
+
 def test_the_real_mock_provider_works_through_the_stream():
     ajan = build_agent(Config(llm_provider="mock", non_interactive=True),
                        memory=MemoryStore(":memory:"))

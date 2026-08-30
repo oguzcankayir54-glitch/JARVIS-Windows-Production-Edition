@@ -37,6 +37,10 @@ def _sunucu(*, sesli: bool = True, **ayar):
     """HTTP dinlemeden yalnızca nesneyi kur — bağlantı testi için yeter."""
     agent = build_agent(Config(llm_provider="mock", non_interactive=True),
                         memory=MemoryStore(":memory:"))
+    # Bu dosya duyuru politikasını değil panel bağlantısını sınıyor. Gerçek
+    # yerel saat 23:00-08:00 arasındaysa varsayılan sessiz aralık kabloyu
+    # kasten susturur ve test günün saatine göre kırmızı/yeşil olur.
+    ayar = {"sessiz_baslangic": 0, "sessiz_bitis": 0, **ayar}
     return PanelServer(
         agent, host="127.0.0.1", port=0,
         tts=_StubTTS() if sesli else None,

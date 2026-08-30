@@ -6,6 +6,7 @@ returned and no unrestricted shell is introduced.
 """
 from __future__ import annotations
 
+import json
 import platform
 import subprocess
 from typing import Any
@@ -66,6 +67,78 @@ def windows_service(name: str) -> dict[str, Any]:
             "output": (completed.stdout or completed.stderr).strip()[:2000]}
 
 
+_WINDOWS_UPDATE_SCRIPT = r"""
+$session = New-Object -ComObject Microsoft.Update.Session
+$searcher = $session.CreateUpdateSearcher()
+$result = $searcher.Search("IsInstalled=0 and IsHidden=0")
+$items = @()
+for ($i = 0; $i -lt $result.Updates.Count -and $i -lt 50; $i++) {
+  $u = $result.Updates.Item($i)
+  $items += [PSCustomObject]@{
+    title = $u.Title
+    downloaded = [bool]$u.IsDownloaded
+    mandatory = [bool]$u.IsMandatory
+  }
+}
+$systemInfo = New-Object -ComObject Microsoft.Update.SystemInfo
+[PSCustomObject]@{
+  count = [int]$result.Updates.Count
+  updates = $items
+  reboot_required = [bool]$systemInfo.RebootRequired
+} | ConvertTo-Json -Compress -Depth 4
+""".strip()
+
+
+def windows_update_status() -> dict[str, Any]:
+    """Query pending updates through the Windows Update Agent COM API."""
+    if platform.system().lower() != "windows":
+        return _unsupported("windows_update_status") | {
+            "user_message": (
+                "Eksik Windows güncellemelerini yalnızca gerçek Windows "
+                "ortamında sorgulayabilirim."
+            ),
+        }
+    try:
+        completed = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+             _WINDOWS_UPDATE_SCRIPT],
+            capture_output=True, text=True, errors="replace",
+            timeout=120, check=False, shell=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(
+            f"Windows Update sorgusu çalıştırılamadı: {type(exc).__name__}"
+        ) from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or "PowerShell hata verdi").strip().splitlines()[-1]
+        raise RuntimeError(f"Windows Update sorgusu başarısız: {detail[:240]}")
+    try:
+        data = json.loads((completed.stdout or "").lstrip("\ufeff").strip())
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Windows Update geçerli bir sonuç döndürmedi") from exc
+    count = int(data.get("count", 0))
+    updates = list(data.get("updates") or [])
+    titles = [str(item.get("title") or "").strip() for item in updates]
+    titles = [title for title in titles if title]
+    if count:
+        shown = "; ".join(titles[:10]) or "başlıklar alınamadı"
+        suffix = f" İlk güncellemeler: {shown}."
+        if count > 10:
+            suffix += f" Ayrıca {count - 10} güncelleme daha var."
+        message = f"Windows Update {count} bekleyen güncelleme buldu.{suffix}"
+    else:
+        message = "Windows Update bekleyen güncelleme bulmadı."
+    if data.get("reboot_required"):
+        message += " Bekleyen bir yeniden başlatma var."
+    return {
+        "available": True,
+        "count": count,
+        "updates": updates,
+        "reboot_required": bool(data.get("reboot_required")),
+        "user_message": message,
+    }
+
+
 def register_windows_tools(registry: ToolRegistry) -> ToolRegistry:
     registry.register(Tool("windows_system", "Windows sistem durumunu oku.",
                            RiskLevel.LOW, windows_system, params=[]))
@@ -77,6 +150,13 @@ def register_windows_tools(registry: ToolRegistry) -> ToolRegistry:
     registry.register(Tool("windows_service", "Bir Windows servisinin durumunu oku.",
                            RiskLevel.LOW, windows_service,
                            params=[Param("name", "string", "Servis adı", required=True)]))
+    registry.register(Tool(
+        "windows_update_status",
+        "Windows Update Agent ile gerçekten bekleyen güncellemeleri sorgula.",
+        RiskLevel.LOW,
+        windows_update_status,
+        params=[],
+    ))
     # These contracts intentionally report unsupported until native adapters
     # and Windows acceptance tests exist; exposing fake state is worse.
     for name, description in (("windows_window", "Windows pencere durumunu oku."),

@@ -229,6 +229,9 @@ class PanelServer:
         self.ocr = ocr if ocr is not None else build_ocr(False)
         self.face_recognizer = face_recognizer if face_recognizer is not None else build_face_recognizer(False)
         self.screenshot = screenshot if screenshot is not None else build_screenshot(False)
+        camera_controller = getattr(agent, "camera_controller", None)
+        if camera_controller is not None:
+            camera_controller.bind(self.vision)
         self.vision_pipeline = vision_pipeline or VisionPipeline(
             faces=self.vision, objects=self.object_vision, ocr=self.ocr,
             identity=self.face_recognizer, screenshot=self.screenshot,
@@ -255,6 +258,7 @@ class PanelServer:
         self.hub = EventHub()
         self._agent_lock = threading.Lock()
         self._speech: dict[str, str] = {}
+        self._playing_speech: set[str] = set()
         self._speech_lock = threading.Lock()
         self._httpd: ThreadingHTTPServer | None = None
         self._stop = threading.Event()
@@ -883,6 +887,42 @@ class PanelServer:
         with self._speech_lock:
             return self._speech.get(speech_id)
 
+    def speech_started(self, speech_id: str) -> bool:
+        """Mark real browser playback, not merely completed synthesis."""
+        with self._speech_lock:
+            if speech_id not in self._speech:
+                return False
+            self._playing_speech.add(speech_id)
+        self.agent.state.transition(
+            JarvisState.SPEAKING,
+            reason="voice.playback.started",
+            details={"speech_id": speech_id},
+        )
+        self.agent.events.publish(
+            "voice.playback.started", {"speech_id": speech_id}, source="voice",
+        )
+        return True
+
+    def speech_finished(self, speech_id: str) -> bool:
+        """Return to standby only after the browser ended or stopped audio."""
+        with self._speech_lock:
+            if speech_id not in self._playing_speech:
+                return False
+            self._playing_speech.remove(speech_id)
+            playing = bool(self._playing_speech)
+        self.agent.events.publish(
+            "voice.playback.finished", {"speech_id": speech_id}, source="voice",
+        )
+        # A late ``ended`` from an interrupted clip must not overwrite a new
+        # LISTENING/THINKING state. Concurrent audio also keeps SPEAKING.
+        if not playing and self.agent.state.state is JarvisState.SPEAKING:
+            self.agent.state.transition(
+                JarvisState.STANDBY,
+                reason="voice.playback.finished",
+                details={"speech_id": speech_id},
+            )
+        return True
+
     # ---------------- background telemetry ----------------
 
     def _telemetry_loop(self) -> None:
@@ -1104,6 +1144,8 @@ def _make_handler(server: PanelServer):
                 return self._json(200, server.health_report(refresh=True))
             if path == "/maintenance/run":
                 return self._handle_maintenance_run()
+            if path.startswith("/speak/"):
+                return self._handle_speech_state(path)
             if path == "/teshis/baslat":
                 return self._handle_diagnostic(start=True)
             if path == "/teshis/yanit":
@@ -1128,6 +1170,19 @@ def _make_handler(server: PanelServer):
                 return self._json(200, {"answer": answer, "speech_id": speech_id})
             except Exception as exc:
                 return self._json(500, {"error": f"{type(exc).__name__}: {exc}"})
+
+        def _handle_speech_state(self, path: str) -> None:
+            parts = path.strip("/").split("/")
+            if len(parts) != 3 or parts[0] != "speak":
+                return self._json(404, {"error": "bulunamadı"})
+            speech_id, action = parts[1], parts[2]
+            if action == "started":
+                ok = server.speech_started(speech_id)
+            elif action == "finished":
+                ok = server.speech_finished(speech_id)
+            else:
+                return self._json(404, {"error": "bilinmeyen ses durumu"})
+            return self._json(200 if ok else 404, {"ok": ok})
 
         def _handle_custom_command(self, *, delete: bool = False) -> None:
             try:
@@ -1505,10 +1560,10 @@ def _make_handler(server: PanelServer):
             if not server.tts.available:
                 return self._json(503, {"error": "ses yapılandırılmamış"})
 
-            # State is restored before any response is written: sending first
-            # lets a client observe the reply while the machine is still marked
-            # SPEAKING, which is both wrong and racy.
-            server.agent.state.transition(JarvisState.SPEAKING)
+            # Synthesis is not playback. Only the browser knows when sound
+            # actually starts/ends, and reports that through the lifecycle
+            # endpoints. Marking SPEAKING here made the state return to HAZIR
+            # before the downloaded blob had even begun to play.
             server.agent.events.publish(
                 "voice.output", {"stage": "tts", "provider": server.tts.name},
                 source="voice",
@@ -1531,8 +1586,6 @@ def _make_handler(server: PanelServer):
                     "voice.error", {"stage": "tts", "error_type": type(exc).__name__},
                     source="voice",
                 )
-            server.agent.state.transition(JarvisState.STANDBY)
-
             if hata is not None:
                 return self._json(hata[0], {"error": hata[1]})
 

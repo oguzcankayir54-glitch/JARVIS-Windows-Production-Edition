@@ -96,7 +96,9 @@ def test_specialist_role_cannot_widen_intent_tool_allowlist():
 
     agent.llm.chat = chat
     agent.ask("Python kodunu incele")
-    assert set(offered) <= {"read_file", "list_directory"}
+    assert set(offered) <= {
+        "inspect_project", "code_search", "read_file", "list_directory",
+    }
     assert "run_terminal_command" not in offered
 
 

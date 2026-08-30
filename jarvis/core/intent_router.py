@@ -134,6 +134,15 @@ class IntentRouter:
         "hata", "bug", "duzelt", "debug", "incele", "refactor", "optimize",
         "iyilestir", "test yaz", "uygula",
     )
+    _CODING_MUTATION = (
+        "duzelt", "degistir", "refactor", "optimize", "iyilestir",
+        "uygula", "test yaz", "ekle", "olustur",
+    )
+    _CODING_TEST = (
+        "testleri calistir", "testlerini calistir", "testleri kos",
+        "testlerini kos", "pytest calistir",
+        "test et", "testlerle dogrula",
+    )
     _CODE_SYNTAX = re.compile(
         r"(?:^|\W)(?:def|class|function|import|from|return|const|let|var)(?:\W|$)"
     )
@@ -153,6 +162,31 @@ class IntentRouter:
         "dosya gezginini ac", "paint'i ac", "komut istemini ac", "powershell'i ac",
         "denetim masasini ac", "aygit yoneticisini ac", "disk yonetimini ac",
         "sistem bilgilerini ac", "windows guvenligini ac",
+    )
+    _WINDOWS_UPDATE_QUERY = (
+        "eksik update", "eksik guncelleme", "bekleyen update",
+        "bekleyen guncelleme", "windows update var mi",
+        "windows guncellemesi var mi", "sistemim guncel mi",
+        "windows sistemim guncel mi",
+    )
+    _DESKTOP_LIST = (
+        "masaustumde neler var", "masaustunde neler var",
+        "masaustumu listele", "masaustu dosyalarini listele",
+    )
+    _SCREENSHOT_WHERE = (
+        "ekran goruntusu nerede", "screenshot nerede",
+        "son ekran goruntusu", "ekran goruntusunun yolu",
+    )
+    _SCREENSHOT_CAPTURE = (
+        "ekran goruntusu al", "ekran goruntusunu al", "screenshot al",
+    )
+    _CAMERA_CONTROL = (
+        "kamera ozelligini aktif et", "kamerayi aktif et", "kamerayi ac",
+        "kamera ozelligini ac", "kamerayi etkinlestir",
+    )
+    _SYSTEM_SUMMARY = (
+        "bu sistem hakkinda ne biliyorsun", "bilgisayar hakkinda ne biliyorsun",
+        "bu bilgisayarin ozellikleri", "sistem ozelliklerini soyle",
     )
     _SYSTEM = (
         "cpu", "islemci", "gpu", "ekran kart", "ram", "bellek", "disk", "ssd", "hdd",
@@ -228,6 +262,17 @@ class IntentRouter:
             0 if wake_key in wake_phrases or short_active_wake
             else self._reasoning_for(decision.intent)
         )
+        entities = dict(decision.entities)
+        windows_path = re.search(
+            r"(?i)(?:[a-z]:[\\/])?users[\\/][^\\/\s,;]+",
+            normalized,
+        )
+        if windows_path:
+            path = windows_path.group(0).replace("/", "\\").rstrip("\\")
+            if not re.match(r"(?i)^[a-z]:\\", path):
+                path = "C:\\" + path
+            entities["windows_user_path"] = path
+
         return replace(
             decision,
             confidence=confidence,
@@ -237,6 +282,7 @@ class IntentRouter:
             reasoning_level=reasoning_level,
             original_text=(original_text if original_text is not None else normalized),
             normalized_text=normalized,
+            entities=entities,
         )
 
     def _route_normalized(self, message: str) -> IntentDecision:
@@ -307,16 +353,86 @@ class IntentRouter:
             self._CODE_SYNTAX.search(text)
         )
         coding_action = self._has(text, self._CODING_ACTION)
-        if self._has(text, self._CODING) or (coding_subject and coding_action) or (
-            "jarvis" in text and any(k in text for k in ("kod", ".py", "fonksiyon", "sinif"))
+        jarvis_code_request = "jarvis" in text and any(
+            key in text for key in ("kod", ".py", "fonksiyon", "sinif")
+        )
+        if (
+            self._has(text, self._CODING)
+            or self._has(text, self._CODING_TEST)
+            or (coding_subject and coding_action)
+            or jarvis_code_request
         ):
-            return self._d(Intent.CODING, 0.96, requires_tool=True,
-                           reason="kaynak kod üzerinde çalışma")
+            # An inline snippet can be explained without pretending that a
+            # repository was changed. Existing/project code work, however,
+            # must leave inspect/edit/test evidence in the tool trace.
+            inline_advice = bool(self._CODE_SYNTAX.search(text)) and not any(
+                marker in text for marker in (
+                    "dosya", "klasor", "proje", "repo", "jarvis", ".py",
+                    ".js", ".ts", ".go", ".rs",
+                )
+            )
+            if inline_advice:
+                return self._d(
+                    Intent.CODING, 0.96, requires_tool=False,
+                    subtype="CODE_ADVICE", reason="satır içi kod açıklaması",
+                )
+            if self._has(text, self._CODING_MUTATION):
+                subtype = "CODE_EDIT"
+            elif self._has(text, self._CODING_TEST):
+                subtype = "CODE_TEST"
+            else:
+                subtype = "CODE_INSPECT"
+            return self._d(
+                Intent.CODING, 0.96, requires_tool=True,
+                subtype=subtype, reason="kaynak kod üzerinde kanıtlı çalışma",
+            )
 
         if self._has(text, self._RAG_EXPLICIT):
             return self._d(Intent.RAG_QUERY, 0.97, requires_tool=True,
                            requires_rag=True, tool="bilgi_ara",
                            reason="belge/PDF/bilgi tabanı içeriği soruluyor")
+
+        if self._has(text, self._WINDOWS_UPDATE_QUERY):
+            return self._d(
+                Intent.SYSTEM_MONITOR, 0.99, requires_tool=True,
+                tool="windows_update_status", subtype="WINDOWS_UPDATE",
+                reason="bekleyen Windows güncellemeleri sorgulanıyor",
+            )
+
+        if self._has(text, self._DESKTOP_LIST):
+            return self._d(
+                Intent.COMPUTER_CONTROL, 0.99, requires_tool=True,
+                tool="masaustu_listele", subtype="DESKTOP_LIST",
+                reason="Windows masaüstü içeriği soruluyor",
+            )
+
+        if self._has(text, self._SCREENSHOT_WHERE):
+            return self._d(
+                Intent.COMPUTER_CONTROL, 0.99, requires_tool=True,
+                tool="son_ekran_goruntusu", subtype="SCREENSHOT_LOCATION",
+                reason="son ekran görüntüsünün gerçek yolu soruluyor",
+            )
+
+        if self._has(text, self._SCREENSHOT_CAPTURE):
+            return self._d(
+                Intent.COMPUTER_CONTROL, 0.99, requires_tool=True,
+                tool="ekran_goruntusu_al_ac", subtype="SCREENSHOT_CAPTURE",
+                reason="ekran görüntüsü alma ve açma isteği",
+            )
+
+        if self._has(text, self._CAMERA_CONTROL):
+            return self._d(
+                Intent.COMPUTER_CONTROL, 0.99, requires_tool=True,
+                tool="kamera_kontrol", subtype="CAMERA_CONTROL",
+                reason="kamera özelliğinin gerçek durumu soruluyor",
+            )
+
+        if self._has(text, self._SYSTEM_SUMMARY):
+            return self._d(
+                Intent.SYSTEM_MONITOR, 0.99, requires_tool=True,
+                tool="get_system_summary", subtype="SYSTEM_SUMMARY",
+                reason="doğrulanmış sistem özeti isteniyor",
+            )
 
         if self._has(text, self._WEB):
             return self._d(Intent.WEB_RESEARCH, 0.96, requires_tool=True,

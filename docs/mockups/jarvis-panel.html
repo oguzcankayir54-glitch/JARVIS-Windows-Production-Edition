@@ -1057,7 +1057,7 @@
     voiceOn = !voiceOn;
     voiceBtn.textContent = voiceOn ? "SES · AÇIK" : "SES · KAPALI";
     voiceBtn.classList.toggle("active", voiceOn);
-    if (!voiceOn && audio) { audio.pause(); audio = null; }
+    if (!voiceOn) sesiKes();
   };
   autoEl.parentNode.insertBefore(voiceBtn, badge);
 
@@ -1841,6 +1841,13 @@
   // sözü de kapatmak zorunda.
   let sesiBitir = null;
 
+  function sesDurumu(id, eylem) {
+    return fetch("/speak/" + encodeURIComponent(id) + "/" + eylem, {
+      method: "POST",
+      keepalive: true,
+    }).catch(() => null);
+  }
+
   // Sözünü kesme. Konuşurken yazmaya başlamak J.A.R.V.I.S.'i susturuyor:
   // ölçülen 250 token'lık bir cevap 3,80 saniye sürüyor ve soruyu yanlış
   // anladıysa o sürenin tamamını dinlemekten başka yol yoktu.
@@ -1888,11 +1895,22 @@
       // aksi halde J.A.R.V.I.S. kendi sesini duyup kendine cevap veriyor.
       // O yüzden bu söz oynatma bitince çözülüyor — kesilerek bittiğinde de.
       const bitti = new Promise((coz) => {
+        let basladi = false;
+        let kapandi = false;
+        let baslamaBildirimi = Promise.resolve();
+        bu.onplaying = () => {
+          if (basladi) return;
+          basladi = true;
+          baslamaBildirimi = sesDurumu(id, "started");
+        };
         // `bu` üzerinden kapanıyor: araya yeni bir oynatma girdiyse
         // eskinin biten olayı yenisini sıfırlamamalı.
         const kapat = () => {
+          if (kapandi) return;
+          kapandi = true;
           if (sesiBitir === kapat) sesiBitir = null;
           if (audio === bu) audio = null;
+          if (basladi) baslamaBildirimi.finally(() => sesDurumu(id, "finished"));
           URL.revokeObjectURL(url);
           coz();
         };
@@ -1909,7 +1927,7 @@
         // sesiKes() hiç başlamamış bir şeyi kesmeye çalışırdı.
         if (audio === bu) audio = null;
         sesiBitir = null;
-        addPlayButton(url);
+        addPlayButton(url, id);
         return;
       }
       await bitti;
@@ -1931,7 +1949,7 @@
     transcript.scrollTop = transcript.scrollHeight;
   }
 
-  function addPlayButton(url) {
+  function addPlayButton(url, id) {
     if (!clearedSeed) { transcript.innerHTML = ""; clearedSeed = true; }
     const row = document.createElement("div");
     row.className = "msg j";
@@ -1942,16 +1960,43 @@
     btn.type = "button";
     btn.textContent = "▶ SESİ ÇAL";
     btn.title = "Tarayıcı otomatik oynatmayı engelledi; bir kez tıklayın.";
-    btn.onclick = () => {
+    btn.onclick = async () => {
+      sesiKes();
       const a = new Audio(url);
-      a.play().catch(() => addNotice("Tarayıcı sesi çalamadı."));
       audio = a;
-      row.remove();
+      let basladi = false;
+      let kapandi = false;
+      let baslamaBildirimi = Promise.resolve();
+      const kapat = () => {
+        if (kapandi) return;
+        kapandi = true;
+        if (sesiBitir === kapat) sesiBitir = null;
+        if (audio === a) audio = null;
+        if (basladi) baslamaBildirimi.finally(() => sesDurumu(id, "finished"));
+        URL.revokeObjectURL(url);
+      };
+      sesiBitir = kapat;
+      a.onplaying = () => {
+        if (basladi) return;
+        basladi = true;
+        baslamaBildirimi = sesDurumu(id, "started");
+      };
+      a.onended = kapat;
+      a.onerror = kapat;
+      try {
+        await a.play();
+        row.remove();
+      } catch (_) {
+        kapat();
+        addNotice("Tarayıcı sesi çalamadı.");
+      }
     };
     row.append(who, btn);
     transcript.appendChild(row);
     transcript.scrollTop = transcript.scrollHeight;
   }
+
+  window.addEventListener("pagehide", sesiKes);
 
   // ---- telemetriyi panele işle ----
   function applyTelemetry(t) {

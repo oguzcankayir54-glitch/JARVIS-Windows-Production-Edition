@@ -21,8 +21,9 @@ class ToolRoute:
 class ToolRouter:
     SYSTEM_TOOLS = frozenset({
         "get_system_info", "get_cpu_temperature", "get_gpu_temperature",
-        "get_ram_usage", "get_disk_health",
+        "get_ram_usage", "get_disk_health", "get_system_summary",
         "windows_system", "windows_process", "windows_network", "windows_service",
+        "windows_update_status",
     })
     CASE_TOOLS = frozenset({
         "vaka_ac", "vaka_notu_ekle", "vaka_kapat", "vaka_ara",
@@ -45,6 +46,8 @@ class ToolRouter:
         Intent.COMPUTER_CONTROL: frozenset({
             "uygulama_ac", "uygulama_listesi", "tarayici_ac", "arama_ac",
             "windows_window", "windows_audio", "windows_input",
+            "masaustu_listele", "ekran_goruntusu_al_ac",
+            "son_ekran_goruntusu", "kamera_kontrol",
         }),
         Intent.SYSTEM_MONITOR: SYSTEM_TOOLS,
         Intent.TASK: frozenset({"ajanda_ekle", "ajanda_listele", "ajanda_durum"}),
@@ -59,16 +62,22 @@ class ToolRouter:
 
     def names_for(self, decision: IntentDecision, user_text: str) -> set[str]:
         if decision.intent is Intent.CODING:
-            allowed = {"read_file", "list_directory"}
+            if decision.subtype == "CODE_ADVICE":
+                return set()
+            allowed = {
+                "inspect_project", "code_search", "read_file", "list_directory",
+            }
             text = katla(user_text)
-            if any(k in text for k in (
+            if decision.subtype == "CODE_EDIT" or any(k in text for k in (
                 "duzelt", "degistir", "yaz", "olustur", "ekle", "refactor", "uygula"
             )):
-                allowed.add("write_file")
-            if any(k in text for k in (
+                allowed.update({
+                    "edit_file", "write_file", "run_project_tests", "git_diff",
+                })
+            elif decision.subtype == "CODE_TEST" or any(k in text for k in (
                 "testleri calistir", "komutu calistir", "terminalde calistir"
             )):
-                allowed.add("run_terminal_command")
+                allowed.add("run_project_tests")
             return allowed
 
         if decision.intent is Intent.TASK and decision.subtype == "SERVICE_CASE":
@@ -80,6 +89,13 @@ class ToolRouter:
                user_text: str, *, limit: int = 8) -> list[dict]:
         allowed = self.names_for(decision, user_text)
         selected = [s for s in schemas if self._schema_name(s) in allowed]
+        # The deterministic router's required tool must survive a schema
+        # limit even as capability families grow.  Otherwise the response
+        # guard sees that it was not offered and correctly stays closed —
+        # leaving the exact hallucination the route was meant to prevent.
+        required = decision.required_tool
+        if required:
+            selected.sort(key=lambda schema: self._schema_name(schema) != required)
         if limit and limit > 0:
             selected = selected[:limit]
         return selected

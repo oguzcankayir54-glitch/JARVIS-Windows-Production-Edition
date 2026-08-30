@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, field
 
-from .intent_router import Intent
+from .intent_router import Intent, IntentDecision
 from .metin import katla
 
 
@@ -44,6 +45,20 @@ class ResponseValidation:
 
 class ResponseEngine:
     """Make backend/LLM output safe and natural for normal conversation."""
+
+    HIGH_CONFIDENCE_ACTION = 0.90
+    TOOL_RETRY_PREFIX = "ZORUNLU ARAÇ YENİDEN DENEMESİ —"
+    _CODE_EVIDENCE = {
+        "CODE_INSPECT": (
+            frozenset({"inspect_project", "code_search", "read_file", "list_directory"}),
+        ),
+        "CODE_EDIT": (
+            frozenset({"inspect_project", "code_search", "read_file", "list_directory"}),
+            frozenset({"edit_file", "write_file"}),
+            frozenset({"run_project_tests"}),
+        ),
+        "CODE_TEST": (frozenset({"run_project_tests"}),),
+    }
 
     _TRACEBACK = re.compile(r"Traceback \(most recent call last\):.*", re.S | re.I)
     _TOOL_PREFIX = re.compile(r"^\[([A-Za-z0-9_\-]+)\]\s*sonucu:\s*", re.I)
@@ -217,6 +232,162 @@ class ResponseEngine:
             detail = "; ".join(self.redact_secrets(item) for item in errors if item)
             return ("İşlem tamamlanamadı." + (f" {detail}" if detail else ""))
         return "İşlem tamamlanamadı. İlgili araç başarılı bir sonuç döndürmedi."
+
+    def requires_tool_evidence(self, *, decision: IntentDecision,
+                               offered_tools: Collection[str]) -> bool:
+        """Whether this turn must have execution evidence before success.
+
+        A conversational turn may correctly use no tool.  The gate therefore
+        requires all three independent signals: a high-confidence routed
+        action, an explicit required tool, and proof that the exact tool was
+        actually offered to the model.  Prompt wording and the model's prose
+        are deliberately irrelevant.
+        """
+        if (
+            decision.intent is Intent.CODING
+            and decision.requires_tool
+            and decision.confidence >= self.HIGH_CONFIDENCE_ACTION
+            and decision.subtype in self._CODE_EVIDENCE
+        ):
+            # The coding contract is deterministic, so a missing registration
+            # must fail honestly instead of silently opening the gate.
+            return True
+        required = decision.required_tool
+        return bool(
+            decision.requires_tool
+            and decision.confidence >= self.HIGH_CONFIDENCE_ACTION
+            and required
+            and required in offered_tools
+        )
+
+    def missing_required_tool_call(self, *, decision: IntentDecision,
+                                   offered_tools: Collection[str],
+                                   tools_used: Collection[str]) -> bool:
+        """Return true when any mandatory evidence stage is absent."""
+        if not self.requires_tool_evidence(
+            decision=decision, offered_tools=offered_tools,
+        ):
+            return False
+        used = set(tools_used)
+        groups = self._CODE_EVIDENCE.get(decision.subtype or "")
+        if groups is not None:
+            return any(not (set(group) & used) for group in groups)
+        required = decision.required_tool
+        return bool(required and required not in used)
+
+    def missing_tool_retry_instruction(self, *, decision: IntentDecision,
+                                       tools_used: Collection[str] = ()) -> str:
+        """One private corrective instruction for a missing action call."""
+        groups = self._CODE_EVIDENCE.get(decision.subtype or "")
+        if groups is not None:
+            used = set(tools_used)
+            missing = ["/".join(sorted(group)) for group in groups if not (set(group) & used)]
+            required = ", ardından ".join(missing) or "gerekli kod kanıtı"
+        else:
+            required = decision.required_tool or "gerekli araç"
+        return (
+            f"{self.TOOL_RETRY_PREFIX} Önceki denemede zorunlu işlem kanıtı eksik kaldı. "
+            f"Bu yüksek güvenli istek için şimdi {required} araç kanıtını tamamla. "
+            "Çağıramıyorsan başarı, gerekçe veya URL uydurma; işlemi "
+            "yapamadığını açıkça söyle."
+        )
+
+    def ground_missing_tool_call(self, text: str, *, decision: IntentDecision,
+                                 offered_tools: Collection[str],
+                                 tools_used: Collection[str],
+                                 debug: bool = False) -> str:
+        """Make absent execution evidence authoritative over model prose.
+
+        This is the sibling of :meth:`ground_tool_failures`: that method owns
+        calls which ran and failed, while this one owns a required call which
+        never happened.  In either case model-written success text loses.
+        """
+        if not self.missing_required_tool_call(
+            decision=decision,
+            offered_tools=offered_tools,
+            tools_used=tools_used,
+        ):
+            return text
+        if debug:
+            required = decision.required_tool or "bilinmeyen"
+            return (
+                "İsteğinizi gerçekleştiremedim. "
+                f"{required} aracı sunuldu ancak model tarafından çağrılmadı."
+            )
+        return (
+            "İsteğinizi gerçekleştiremedim; gerekli işlem çalıştırılmadığı "
+            "için başarıyı doğrulayamıyorum."
+        )
+
+    def ground_verified_tool_result(self, text: str, *, decision: IntentDecision,
+                                    outcomes: dict[str, object]) -> str:
+        """Let a verified tool-authored message outrank model narration.
+
+        Only an explicit ``user_message`` from the exact required tool is
+        trusted.  Arbitrary model prose and unrelated tool results cannot use
+        this path, and failed/unverified calls remain owned by
+        :meth:`ground_tool_failures`.
+        """
+        required = decision.required_tool
+        result = outcomes.get(required or "")
+        if not required or result is None:
+            return text
+        if not getattr(result, "ok", False) or getattr(result, "verified", None) is not True:
+            return text
+        data = getattr(result, "data", None)
+        if not isinstance(data, dict):
+            return text
+        message = data.get("user_message")
+        if not isinstance(message, str) or not message.strip():
+            return text
+        return self.redact_secrets(message.strip())
+
+    def ground_coding_result(self, text: str, *, decision: IntentDecision,
+                             outcomes: dict[str, object]) -> str:
+        """Render edit/test completion only from verified tool outcomes.
+
+        Free-form model prose remains useful for source analysis, but it is
+        never the authority for the operational claims "I changed it" or
+        "tests passed". Those two claims are replaced with paths and exit
+        codes emitted by the tools that actually performed the work.
+        """
+        if decision.intent is not Intent.CODING:
+            return text
+        subtype = decision.subtype or ""
+        if subtype not in {"CODE_EDIT", "CODE_TEST"}:
+            return text
+        test_result = outcomes.get("run_project_tests")
+        if (
+            test_result is None
+            or not getattr(test_result, "ok", False)
+            or getattr(test_result, "verified", None) is not True
+        ):
+            return text
+        test_data = getattr(test_result, "data", None)
+        if not isinstance(test_data, dict) or test_data.get("passed") is not True:
+            return text
+        framework = str(test_data.get("framework") or "proje")
+        exit_code = test_data.get("exit_code")
+        verification = (
+            f"{framework} testleri gerçekten geçti (çıkış kodu {exit_code})."
+        )
+        if subtype == "CODE_TEST":
+            return f"Test doğrulaması tamamlandı: {verification}"
+
+        edit_result = outcomes.get("edit_file") or outcomes.get("write_file")
+        if (
+            edit_result is None
+            or not getattr(edit_result, "ok", False)
+            or getattr(edit_result, "verified", None) is not True
+        ):
+            return text
+        edit_data = getattr(edit_result, "data", None)
+        path = edit_data.get("path") if isinstance(edit_data, dict) else None
+        target = str(path or "dosya")
+        return (
+            f"Kod değişikliği gerçekten uygulandı: {target}. "
+            f"Test doğrulaması tamamlandı: {verification}"
+        )
 
     def error(self, exc: BaseException, *, debug: bool = False) -> str:
         if debug:

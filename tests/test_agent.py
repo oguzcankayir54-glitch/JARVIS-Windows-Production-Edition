@@ -388,3 +388,83 @@ def test_later_success_resolves_an_earlier_failure_for_same_tool(monkeypatch):
     reply = agent.ask("RAM durumunu göster")
 
     assert reply == "RAM bilgisi alındı."
+
+
+def test_high_confidence_action_without_a_tool_call_never_reports_success(monkeypatch):
+    """A fake LLM's prose cannot stand in for an application launch."""
+    agent = _agent()
+    from jarvis.llm.base import LLMResponse
+
+    seen = []
+    replies = [
+        LLMResponse(content="Açıldı efendim. https://uydurma.invalid"),
+        LLMResponse(content="Oyun havuzu kısıtlaması yüzünden açıldı sayılır."),
+    ]
+
+    def chat(messages, tools=None):
+        seen.append((list(messages), list(tools or ())))
+        return replies.pop(0)
+
+    monkeypatch.setattr(agent.llm, "chat", chat)
+
+    reply = agent.ask("Aygıt yöneticisini aç")
+
+    assert len(seen) == 2, "araçsız eylem tam bir kez yeniden denenmeli"
+    assert all(
+        "uygulama_ac" in {
+            (schema.get("function") or {}).get("name") for schema in schemas
+        }
+        for _, schemas in seen
+    )
+    assert any(
+        message.role == "system"
+        and message.content.startswith(agent.response_engine.TOOL_RETRY_PREFIX)
+        for message in seen[1][0]
+    )
+    assert "açıldı" not in reply.casefold()
+    assert "uydurma" not in reply.casefold()
+    assert "gerçekleştiremedim" in reply.casefold()
+    assert agent.last_trace is not None and agent.last_trace.tools_used == []
+    assert not any(
+        message.content.startswith(agent.response_engine.TOOL_RETRY_PREFIX)
+        for message in agent.history
+    )
+
+
+def test_missing_action_retry_can_recover_by_calling_the_tool(monkeypatch):
+    agent = _agent()
+    from jarvis.llm.base import LLMResponse, ToolCall
+    from jarvis.tools.base import ToolResult
+
+    replies = [
+        LLMResponse(content="Açıldı efendim."),
+        LLMResponse(tool_calls=[ToolCall("uygulama_ac", {"ad": "aygıt yöneticisi"})]),
+        LLMResponse(content="Aygıt Yöneticisi açıldı efendim."),
+    ]
+    monkeypatch.setattr(agent.llm, "chat", lambda *a, **k: replies.pop(0))
+    monkeypatch.setattr(
+        agent.tools,
+        "dispatch",
+        lambda *a, **k: ToolResult(ok=True, data={"acildi": True}, verified=True),
+    )
+
+    reply = agent.ask("Aygıt yöneticisini aç")
+
+    assert reply == "Aygıt Yöneticisi açıldı efendim."
+    assert agent.last_trace is not None
+    assert agent.last_trace.tools_used == ["uygulama_ac"]
+
+
+def test_ordinary_chat_does_not_get_the_action_retry(monkeypatch):
+    agent = _agent()
+    from jarvis.llm.base import LLMResponse
+
+    calls = []
+    monkeypatch.setattr(
+        agent.llm,
+        "chat",
+        lambda *a, **k: calls.append(1) or LLMResponse(content="İyiyim efendim."),
+    )
+
+    assert agent.ask("Nasılsın?") == "İyiyim efendim."
+    assert len(calls) == 1

@@ -1,4 +1,4 @@
-from jarvis.core.intent_router import Intent
+from jarvis.core.intent_router import Intent, IntentDecision
 from jarvis.core.response_engine import ResponseEngine
 
 
@@ -52,3 +52,46 @@ def test_github_intent_still_hides_runtime_tool_identifier():
                    intent=Intent.GITHUB, user_text="GitHub'daki son commit'e bak")
     assert "git_log" not in out
     assert "iç işlem" in out
+
+
+def _action_decision(confidence=0.97):
+    return IntentDecision(
+        Intent.COMPUTER_CONTROL,
+        confidence,
+        requires_tool=True,
+        tool="uygulama_ac",
+    )
+
+
+def test_missing_tool_grounding_depends_on_execution_evidence_not_prose():
+    engine = ResponseEngine({"uygulama_ac"})
+    out = engine.ground_missing_tool_call(
+        "Açıldı efendim.",
+        decision=_action_decision(),
+        offered_tools={"uygulama_ac"},
+        tools_used=(),
+    )
+    assert "Açıldı" not in out
+    assert "gerçekleştiremedim" in out
+
+
+def test_missing_tool_gate_needs_confidence_and_the_required_offered_tool():
+    engine = ResponseEngine({"uygulama_ac"})
+    for decision, offered in (
+        (_action_decision(0.89), {"uygulama_ac"}),
+        (_action_decision(), {"uygulama_listesi"}),
+    ):
+        assert not engine.missing_required_tool_call(
+            decision=decision,
+            offered_tools=offered,
+            tools_used=(),
+        )
+
+
+def test_unrelated_tool_call_does_not_fake_required_action_evidence():
+    engine = ResponseEngine({"uygulama_ac"})
+    assert engine.missing_required_tool_call(
+        decision=_action_decision(),
+        offered_tools={"uygulama_ac"},
+        tools_used=("uygulama_listesi",),
+    )

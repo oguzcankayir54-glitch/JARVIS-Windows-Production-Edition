@@ -189,8 +189,8 @@ def test_a_windows_app_on_plain_linux_says_why(tmp_path, monkeypatch):
     import jarvis.apps.ac as modul
     monkeypatch.setattr(modul, "windows_erisimi_var", lambda: False)
     sonuc = _kayit(tmp_path).get("uygulama_ac").run(ad="hesap makinesi")
-    assert "hata" in sonuc.data
-    assert "Windows değil" in sonuc.data["hata"]
+    assert not sonuc.ok
+    assert "Windows değil" in sonuc.error
 
 
 def test_a_windows_app_opens_directly_on_windows(tmp_path, monkeypatch):
@@ -224,8 +224,82 @@ def test_a_missing_program_on_windows_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(modul, "windows_mi", lambda: True)
     monkeypatch.setattr(modul, "_yerel_windows_programi", lambda h: False)
     sonuc = _kayit(tmp_path).get("uygulama_ac").run(ad="hesap makinesi")
-    assert "hata" in sonuc.data
-    assert "bulunmuyor" in sonuc.data["hata"]
+    assert not sonuc.ok
+    assert "bulunmuyor" in sonuc.error
+
+
+@pytest.mark.parametrize("returncode", [1, 7])
+def test_process_launcher_rejects_nonzero_exit_codes(monkeypatch, returncode):
+    import jarvis.apps.ac as modul
+
+    class Process:
+        def wait(self, timeout=None):
+            return returncode
+
+    monkeypatch.setattr(modul.subprocess, "Popen", lambda *a, **k: Process())
+    assert modul._calistir(["broken.exe"]) is False
+
+
+def test_process_launcher_does_not_wait_for_a_running_gui(monkeypatch):
+    import subprocess
+    import jarvis.apps.ac as modul
+
+    class Process:
+        def wait(self, timeout=None):
+            if timeout is not None:
+                raise subprocess.TimeoutExpired("gui.exe", timeout)
+            return 0
+
+    started = []
+
+    class Thread:
+        def __init__(self, **kwargs):
+            started.append(kwargs)
+        def start(self):
+            started.append("started")
+
+    monkeypatch.setattr(modul.subprocess, "Popen", lambda *a, **k: Process())
+    monkeypatch.setattr(modul.threading, "Thread", Thread)
+
+    assert modul._calistir(["gui.exe"]) is True
+    assert "started" in started
+
+
+def test_native_startfile_needs_a_real_process(monkeypatch):
+    import jarvis.apps.ac as modul
+
+    opened = []
+    monkeypatch.setattr(modul.os, "startfile", lambda target: opened.append(target),
+                        raising=False)
+    monkeypatch.setattr(modul, "_sureci_bekle", lambda _target: False)
+
+    assert modul._yerel_windows_programi("devmgmt.msc") is False
+    assert opened == ["devmgmt.msc"]
+
+
+def test_native_startfile_succeeds_after_process_verification(monkeypatch):
+    import jarvis.apps.ac as modul
+
+    monkeypatch.setattr(modul.os, "startfile", lambda _target: None, raising=False)
+    monkeypatch.setattr(modul, "_sureci_bekle", lambda _target: True)
+    assert modul._yerel_windows_programi("devmgmt.msc") is True
+
+
+def test_msc_targets_are_verified_as_mmc_processes():
+    import jarvis.apps.ac as modul
+
+    assert modul._beklenen_surec_adlari("devmgmt.msc") == {"mmc.exe"}
+    assert modul._beklenen_surec_adlari("C:\\Windows\\diskmgmt.msc") == {"mmc.exe"}
+
+
+def test_process_name_check_is_case_insensitive(monkeypatch):
+    import jarvis.apps.ac as modul
+
+    class Process:
+        info = {"name": "MMC.EXE"}
+
+    monkeypatch.setattr(modul.psutil, "process_iter", lambda _attrs: [Process()])
+    assert modul._surec_var_mi({"mmc.exe"}) is True
 
 
 def test_the_list_tool_reports_what_can_be_opened(tmp_path):

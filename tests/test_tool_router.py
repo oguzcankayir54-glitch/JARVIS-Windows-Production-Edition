@@ -10,6 +10,10 @@ ALL = [_schema(n) for n in (
     "get_system_info", "get_ram_usage", "remember_fact", "recall_facts",
     "bilgi_ara", "bilgi_durum", "read_file", "list_directory", "write_file",
     "run_terminal_command", "web_ara", "web_oku", "uygulama_ac",
+    "get_system_summary", "windows_update_status", "masaustu_listele",
+    "ekran_goruntusu_al_ac", "son_ekran_goruntusu", "kamera_kontrol",
+    "inspect_project", "code_search", "edit_file", "run_project_tests",
+    "git_diff",
 )]
 
 
@@ -37,17 +41,40 @@ def test_rag_query_cannot_get_shell_or_memory():
 def test_coding_inspection_is_read_only():
     got = names(ToolRouter().select(
         ALL, IntentDecision(Intent.CODING, .9), "authentication kodunu incele"))
-    assert got == {"read_file", "list_directory"}
+    assert got == {"inspect_project", "code_search", "read_file", "list_directory"}
 
 
 def test_coding_edit_may_expose_write_but_not_shell_by_default():
     got = names(ToolRouter().select(
         ALL, IntentDecision(Intent.CODING, .9), "authentication kodunu düzelt"))
     assert "write_file" in got
+    assert "edit_file" in got
+    assert "run_project_tests" in got
     assert "run_terminal_command" not in got
+
+
+def test_inline_code_advice_does_not_receive_repository_tools():
+    got = ToolRouter().select(
+        ALL,
+        IntentDecision(Intent.CODING, .96, subtype="CODE_ADVICE"),
+        "def ilk(xs): return xs[0] hatasını açıkla",
+    )
+    assert got == []
 
 
 def test_github_does_not_fall_back_to_arbitrary_shell():
     got = ToolRouter().select(
         ALL, IntentDecision(Intent.GITHUB, .9), "GitHub son commit'e bak")
-    assert got == []
+    assert names(got) == {"git_diff"}
+    assert "run_terminal_command" not in names(got)
+
+
+def test_required_tool_survives_a_tight_schema_limit():
+    decision = IntentDecision(
+        Intent.SYSTEM_MONITOR, .99, requires_tool=True,
+        tool="windows_update_status",
+    )
+
+    got = ToolRouter().select(ALL, decision, "eksik update var mı", limit=1)
+
+    assert names(got) == {"windows_update_status"}

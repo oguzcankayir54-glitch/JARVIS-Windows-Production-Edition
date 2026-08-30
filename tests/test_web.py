@@ -304,6 +304,61 @@ def test_speech_endpoint_returns_audio(voice_server):
     assert tts.spoken, "metin seslendirilmeliydi"
 
 
+def test_audio_download_is_not_mistaken_for_browser_playback(voice_server):
+    """Sentez bitmiş olabilir; hoparlörden henüz tek örnek çıkmamıştır."""
+    from jarvis.core.state import JarvisState
+
+    srv, _ = voice_server
+    _, body = _post(srv, "/ask", {"text": "merhaba"})
+    _get(srv, f"/speak/{body['speech_id']}")
+
+    assert srv.agent.state.state is JarvisState.STANDBY
+
+
+def test_browser_playback_lifecycle_drives_speaking_then_standby(voice_server):
+    from jarvis.core.state import JarvisState
+
+    srv, _ = voice_server
+    _, body = _post(srv, "/ask", {"text": "merhaba"})
+    speech_id = body["speech_id"]
+
+    status, started = _post(srv, f"/speak/{speech_id}/started", {})
+    assert status == 200 and started["ok"] is True
+    assert srv.agent.state.state is JarvisState.SPEAKING
+
+    status, finished = _post(srv, f"/speak/{speech_id}/finished", {})
+    assert status == 200 and finished["ok"] is True
+    assert srv.agent.state.state is JarvisState.STANDBY
+
+
+def test_one_finished_clip_does_not_end_another_active_clip(voice_server):
+    from jarvis.core.state import JarvisState
+
+    srv, _ = voice_server
+    first = srv._speech_kaydet("birinci")
+    second = srv._speech_kaydet("ikinci")
+    assert first and second
+    assert srv.speech_started(first)
+    assert srv.speech_started(second)
+
+    assert srv.speech_finished(first)
+    assert srv.agent.state.state is JarvisState.SPEAKING
+    assert srv.speech_finished(second)
+    assert srv.agent.state.state is JarvisState.STANDBY
+
+
+def test_late_audio_end_never_overwrites_a_newer_thinking_state(voice_server):
+    from jarvis.core.state import JarvisState
+
+    srv, _ = voice_server
+    speech_id = srv._speech_kaydet("eski cevap")
+    assert speech_id and srv.speech_started(speech_id)
+    srv.agent.state.transition(JarvisState.THINKING)
+
+    assert srv.speech_finished(speech_id)
+    assert srv.agent.state.state is JarvisState.THINKING
+
+
 def test_speech_has_content_length_not_chunked(voice_server):
     """A phone behind a TCP relay handles a known length far better."""
     srv, _ = voice_server

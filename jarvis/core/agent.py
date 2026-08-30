@@ -215,10 +215,41 @@ class Agent:
 
     def _intent_context(self, karar: IntentDecision) -> Message:
         extra = ""
+        if karar.required_tool:
+            extra += (
+                f" Bu turda {karar.required_tool} aracı zorunludur; araç sonucu "
+                "olmadan başarı veya sonuç bildirme."
+            )
+        if karar.intent is Intent.CODING and karar.subtype == "CODE_INSPECT":
+            extra += (
+                " Kaynak hakkında sonuç vermeden önce inspect_project, code_search, "
+                "read_file veya list_directory ile gerçek kaynak kanıtı topla; "
+                "dosya ve satır uydurma."
+            )
+        elif karar.intent is Intent.CODING and karar.subtype == "CODE_EDIT":
+            extra += (
+                " Kod görevi zorunlu sırayla kanıtlanır: önce kaynağı incele, "
+                "sonra edit_file/write_file ile gerçekten değiştir, ardından "
+                "run_project_tests ile testi gerçekten çalıştır. Bu üç aşamadan "
+                "biri eksikse tamamlandı veya testler geçti deme."
+            )
+        elif karar.intent is Intent.CODING and karar.subtype == "CODE_TEST":
+            extra += (
+                " Test sonucunu yalnızca run_project_tests çıkış koduna dayandır; "
+                "çalıştırmadan geçti/kaldı deme."
+            )
+        windows_path = karar.entities.get("windows_user_path")
+        if windows_path:
+            extra += (
+                " Kullanıcının verdiği kesin Windows kullanıcı yolu "
+                f"'{windows_path}'. Bunu remember_fact ile "
+                "key='windows_kullanici_yolu', category='sistem' olarak "
+                "aynen kaydet; bilgisayar adı uydurma."
+            )
         if karar.subtype == "TRAINING_DATA":
-            extra = (" Eğitim modu aktif: kullanıcı kalıcı bir bilgi öğretiyor. "
-                     "Bilgiyi anlamlandır, uygun anahtar/kategoriyle remember_fact kullan; "
-                     "RAG'e gönderme.")
+            extra += (" Eğitim modu aktif: kullanıcı kalıcı bir bilgi öğretiyor. "
+                      "Bilgiyi anlamlandır, uygun anahtar/kategoriyle remember_fact kullan; "
+                      "RAG'e gönderme.")
         return Message(
             role="system",
             content=(
@@ -297,7 +328,9 @@ class Agent:
         if self.memory is not None:
             self.memory.add_message(self.session_id, "assistant", cevap)
         self._baglami_daralt()
-        self.state.transition(JarvisState.SPEAKING)
+        # Text production is complete here; actual audio playback is owned by
+        # the panel/browser lifecycle. Marking SPEAKING for this zero-duration
+        # handoff made the UI say HAZIR while sound was still playing.
         self.state.transition(JarvisState.STANDBY)
         if trace is not None and trace_started is not None:
             self._finish_trace(trace, trace_started)
@@ -778,12 +811,32 @@ class Agent:
         # capability family they need. ``araclari_sec`` remains available for
         # backward compatibility and will be retired/refined in Phase 6.
         schemas = self._intent_schemas(adaylar, self.last_intent, user_text)
+        offered_tool_names = {
+            str((schema.get("function") or {}).get("name") or "")
+            for schema in schemas
+        }
+        offered_tool_names.discard("")
 
         # Latest result per tool is the turn's factual execution evidence. A
         # controlled retry can replace an earlier failure with success.
         tool_outcomes: dict[str, ToolResult] = {}
+        missing_tool_retry_used = False
 
-        for _ in range(self.max_steps):
+        def clear_missing_tool_warning() -> None:
+            self.history = [
+                message for message in self.history
+                if not (
+                    message.role == "system"
+                    and message.content.startswith(
+                        self.response_engine.TOOL_RETRY_PREFIX
+                    )
+                )
+            ]
+
+        # A prose-only miss does not consume the normal tool-loop budget: the
+        # model gets exactly one corrected attempt, even when max_steps is 1.
+        tool_rounds = 0
+        while tool_rounds < self.max_steps:
             self._baglami_daralt()
             self.state.transition(JarvisState.THINKING)
             try:
@@ -799,20 +852,29 @@ class Agent:
                     if chunk_callback is not None else None
                 )
                 streamed = False
+                action_stream_buffered = False
                 if stream_call is None:
                     response = self.llm.chat(self.history, tools=schemas)
                 else:
                     pieces: list[str] = []
+                    action_stream_buffered = (
+                        self.response_engine.requires_tool_evidence(
+                            decision=self.last_intent,
+                            offered_tools=offered_tool_names,
+                        )
+                    )
                     for piece in stream_call(self.history, tools=schemas):
                         if not piece:
                             continue
                         streamed = True
                         pieces.append(piece)
-                        chunk_callback(piece)
+                        if not action_stream_buffered:
+                            chunk_callback(piece)
                     response = getattr(self.llm, "son_yanit", None)
                     if not isinstance(response, LLMResponse):
                         response = LLMResponse(content="".join(pieces))
             except Exception as exc:
+                clear_missing_tool_warning()
                 self.events.publish(
                     "llm.error", {"model": self._trace_model_name(),
                                   "error_type": type(exc).__name__},
@@ -842,7 +904,41 @@ class Agent:
             )
 
             if not response.wants_tool:
+                missing_tool_call = self.response_engine.missing_required_tool_call(
+                    decision=self.last_intent,
+                    offered_tools=offered_tool_names,
+                    tools_used=turn_trace.tools_used,
+                )
+                if missing_tool_call and not missing_tool_retry_used:
+                    missing_tool_retry_used = True
+                    self.history.append(Message(
+                        role="system",
+                        content=self.response_engine.missing_tool_retry_instruction(
+                            decision=self.last_intent,
+                            tools_used=turn_trace.tools_used,
+                        ),
+                    ))
+                    continue
+
+                clear_missing_tool_warning()
                 cevap = self._kullanici_cevabi(response.content, user_text)
+                cevap = self.response_engine.ground_missing_tool_call(
+                    cevap,
+                    decision=self.last_intent,
+                    offered_tools=offered_tool_names,
+                    tools_used=turn_trace.tools_used,
+                    debug=self.debug_mode,
+                )
+                cevap = self.response_engine.ground_verified_tool_result(
+                    cevap,
+                    decision=self.last_intent,
+                    outcomes=tool_outcomes,
+                )
+                cevap = self.response_engine.ground_coding_result(
+                    cevap,
+                    decision=self.last_intent,
+                    outcomes=tool_outcomes,
+                )
                 unresolved = [
                     getattr(result, "error", "")
                     for result in tool_outcomes.values()
@@ -851,18 +947,35 @@ class Agent:
                 cevap = self.response_engine.ground_tool_failures(
                     cevap, errors=unresolved, debug=self.debug_mode,
                 )
-                if chunk_callback is not None and not streamed:
+                # A guarded action stream is buffered until tool evidence is
+                # known, so its invented prose must never have reached the
+                # caller even when the provider did stream it.
+                if chunk_callback is not None and (not streamed or action_stream_buffered):
                     chunk_callback(cevap)
                 self.history.append(Message(role="assistant", content=cevap))
                 self.durum = bekleyen_soruyu_yakala(self.durum, cevap)
                 if self.memory is not None:
                     self.memory.add_message(self.session_id, "assistant", cevap)
                 self._baglami_daralt()
-                self.state.transition(JarvisState.SPEAKING)
+                # Audio playback has not started yet. The panel reports its
+                # real ``playing``/``ended`` lifecycle separately.
                 self.state.transition(JarvisState.STANDBY)
                 self._finish_trace(turn_trace, trace_started)
                 return cevap
 
+            clear_missing_tool_warning()
+            tool_rounds += 1
+            windows_path = self.last_intent.entities.get("windows_user_path")
+            if windows_path:
+                for call in response.tool_calls:
+                    if call.name == "remember_fact":
+                        call.arguments = {
+                            **call.arguments,
+                            "key": "windows_kullanici_yolu",
+                            "value": windows_path,
+                            "category": "sistem",
+                            "cikarim": False,
+                        }
             # Ollama'nın tool protokolünde araç sonucundan önce, aracı isteyen
             # assistant mesajı da sonraki isteğe geri gönderilmelidir. Yalnız
             # tool sonucunu eklemek küçük modellerde "bu sonuç neden geldi?"
@@ -923,6 +1036,7 @@ class Agent:
                 )
 
         # Safety valve: too many tool rounds without a final answer.
+        clear_missing_tool_warning()
         self.state.transition(JarvisState.STANDBY)
         fallback = self._kullanici_cevabi(
             "Bu isteği birkaç adımda tamamlayamadım; daha net sorabilir misiniz?",

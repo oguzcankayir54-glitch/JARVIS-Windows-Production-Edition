@@ -48,6 +48,7 @@ from ..core.maintenance_commands import command_catalog, run_maintenance
 from ..core.custom_commands import CustomCommandStore
 from ..diagnostics import DiagnosticEngine, DiagnosticError
 from ..diagnostics.health import collect_health
+from ..diagnostics.duyuru import DuyuruAyari, Duyurucu
 from ..diagnostics.monitor import MonitorConfig, ProactiveMonitor
 from ..vision.objects import build_object_vision
 from ..vision.ocr import build_ocr
@@ -210,7 +211,8 @@ class PanelServer:
                  rag_auto_paths=(), rag_sync_interval: float = 60.0,
                  llm_uyari: str = "", reminder_interval: float = 30.0,
                  acceptance_report=None,
-                 monitor_config: MonitorConfig | None = None) -> None:
+                 monitor_config: MonitorConfig | None = None,
+                 duyuru_ayari: DuyuruAyari | None = None) -> None:
         self.agent = agent
         self.host = host
         self.port = port
@@ -264,6 +266,10 @@ class PanelServer:
         self._command_results: dict[str, dict[str, Any]] = {}
         self.monitor = ProactiveMonitor(
             agent.events, monitor_config or MonitorConfig(enabled=False))
+        # Monitor ölçüyordu, panel gösteriyordu, ama kimse SÖYLEMİYORDU.
+        # Ekrana bakmıyorsanız diskin %97 olduğunu öğrenmiyordunuz.
+        self.duyurucu = Duyurucu(agent.events, self._duyuruyu_seslendir,
+                                 duyuru_ayari or DuyuruAyari())
         self._last_resource_monitor = 0.0
         self.rag_auto_paths = tuple(Path(p).expanduser() for p in rag_auto_paths)
         self.rag_sync_interval = max(0.05, float(rag_sync_interval))
@@ -744,15 +750,43 @@ class PanelServer:
                 permissions.approver = previous_approver
         self.hub.publish("transcript", {"role": "assistant", "text": answer}, retain=False)
 
-        speech_id = None
-        if self.tts.available and answer.strip():
-            speech_id = uuid.uuid4().hex[:16]
-            with self._speech_lock:
-                self._speech[speech_id] = answer
-                # Keep the cache small; these are only needed for one playback.
-                while len(self._speech) > 20:
-                    self._speech.pop(next(iter(self._speech)))
-        return answer, speech_id
+        return answer, self._speech_kaydet(answer)
+
+    def _duyuruyu_seslendir(self, metin: str) -> None:
+        """Sesli duyuruyu panele gönder.
+
+        Sentez BURADA yapılmıyor. Olay otobüsü teslimatı senkron: yavaş
+        bir abone bütün yayını bekletir (bkz. :mod:`jarvis.core.events`)
+        ve ses üretimi saniyeler sürebilir — monitörün bir sonraki ölçüm
+        turunu bekletirdi. Panel metnin kimliğini alıp sesi ``/speech/<id>``
+        ucundan kendisi çekiyor; cevap sesiyle tamamen aynı yol.
+
+        Ses kapalıysa sessizce çıkılıyor: bildirimin kendisi zaten
+        ``system.alert`` olayıyla ekrana düşmüş oluyor.
+        """
+        speech_id = self._speech_kaydet(metin)
+        if speech_id is None:
+            return
+        self.hub.publish("duyuru", {"text": metin, "speech_id": speech_id},
+                         retain=False)
+
+    def _speech_kaydet(self, metin: str) -> str | None:
+        """Bir metni oynatılmak üzere kaydet, kimliğini döndür.
+
+        Cevap sesi ve sesli duyuru aynı yolu kullanıyor. Ayrı yazılsalardı
+        önbellek sınırı birinde düzeltilip diğerinde unutulurdu — bu
+        depoda ``ask``/``ask_stream`` tam bu yüzden ortak yardımcılara
+        bölünmüştü.
+        """
+        if not (self.tts.available and metin.strip()):
+            return None
+        speech_id = uuid.uuid4().hex[:16]
+        with self._speech_lock:
+            self._speech[speech_id] = metin
+            # Keep the cache small; these are only needed for one playback.
+            while len(self._speech) > 20:
+                self._speech.pop(next(iter(self._speech)))
+        return speech_id
 
     def listen(self, audio: bytes, content_type: str = "") -> str:
         """Transcribe a recording. Returns the text; does not ask anything.
@@ -927,6 +961,7 @@ class PanelServer:
                 thread.join(timeout=25.0)
         self._background_threads = [t for t in self._background_threads if t.is_alive()]
         self.monitor.close()
+        self.duyurucu.close()
         self.vision_pipeline.close()
         close_tts = getattr(self.tts, "close", None)
         if callable(close_tts):

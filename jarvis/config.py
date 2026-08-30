@@ -127,6 +127,24 @@ class Config:
     monitor_vram_warning: float = field(default_factory=lambda: _float("JARVIS_MONITOR_VRAM_WARNING", 85.0))
     monitor_vram_critical: float = field(default_factory=lambda: _float("JARVIS_MONITOR_VRAM_CRITICAL", 95.0))
 
+    # --- sesli duyuru ---
+    # Monitor'ün ölçtüğü şeyin SÖYLENMESİ. Varsayılan kapalı: konuşan bir
+    # asistanı isteyip istemediğine kullanıcı karar verir; kendiliğinden
+    # açılan bir özellik ilk kez gece konuştuğunda arıza gibi görünür.
+    duyuru_enabled: bool = field(
+        default_factory=lambda: _bool("JARVIS_DUYURU_ENABLED", False))
+    #: Yalnızca kritik. Uyarı seviyesi ekranda kalıyor.
+    duyuru_yalnizca_kritik: bool = field(
+        default_factory=lambda: _bool("JARVIS_DUYURU_YALNIZCA_KRITIK", True))
+    #: İki duyuru arasındaki en az süre (sn) — anahtar başına değil, toplam.
+    duyuru_ara: float = field(
+        default_factory=lambda: max(0.0, _float("JARVIS_DUYURU_ARA", 120.0)))
+    #: Sessiz aralık (yerel saat). Başlangıç == bitiş ise sessiz saat yok.
+    duyuru_sessiz_baslangic: int = field(
+        default_factory=lambda: int(_float("JARVIS_DUYURU_SESSIZ_BASLANGIC", 23)) % 24)
+    duyuru_sessiz_bitis: int = field(
+        default_factory=lambda: int(_float("JARVIS_DUYURU_SESSIZ_BITIS", 8)) % 24)
+
     # --- paths ---
     data_dir: Path = field(default_factory=lambda: Path(
         _oku("JARVIS_DATA_DIR") or asistan_bul().veri_klasoru).expanduser())

@@ -27,6 +27,7 @@ from ..vision.identity import build_face_recognizer
 from ..vision.screenshot import build_screenshot
 from ..voice.stt import build_stt
 from ..voice.tts import NullTTS, TTSError, tts_from_config
+from ..diagnostics.duyuru import DuyuruAyari
 from ..diagnostics.monitor import MonitorConfig
 from .server import PanelServer, sesli_taban
 
@@ -208,6 +209,16 @@ def main(argv: list[str] | None = None) -> int:
                              gpu_temp_critical=cfg.monitor_gpu_temp_critical,
                              vram_warning=cfg.monitor_vram_warning,
                              vram_critical=cfg.monitor_vram_critical,
+                         ),
+                         duyuru_ayari=DuyuruAyari(
+                             # Ses kapalıysa duyuru da kapalı: söylenecek
+                             # yer yokken politika işletmenin anlamı yok.
+                             enabled=(cfg.duyuru_enabled and cfg.voice_enabled
+                                      and not args.sessiz),
+                             yalnizca_kritik=cfg.duyuru_yalnizca_kritik,
+                             en_az_ara=cfg.duyuru_ara,
+                             sessiz_baslangic=cfg.duyuru_sessiz_baslangic,
+                             sessiz_bitis=cfg.duyuru_sessiz_bitis,
                          ))
 
     url = f"http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{args.port}"

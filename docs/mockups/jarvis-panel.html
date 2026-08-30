@@ -1108,8 +1108,22 @@
     addMessage(role, text);
   }
 
+  // Sözünü kesme — panel tarafı.
+  //
+  // Yazmaya başlamak J.A.R.V.I.S.'i susturuyor. Kullanıcı yazmaya
+  // başladıysa söylenmekte olan cümlenin geri kalanı artık geçersiz;
+  // terminalde de aynısı yapılıyor (Enter'a basınca susuyor).
+  // sesiKes() bir şey çalmıyorken sessizce false döndüğü için her tuş
+  // vuruşunda çağrılması sorun değil.
+  input.addEventListener("input", sesiKes);
+  // Yazmak istemeyene de bir yol: klavyeden Escape her yerden susturur.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") sesiKes();
+  });
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    sesiKes();
     const text = input.value.trim();
     if (!text) return;
     let approveHigh=false;
@@ -1818,12 +1832,40 @@
   // ---- ses ----
   let voiceOn = true;
   let audio = null;
+  // Süren oynatmanın bitiş sözünü çözen işlev.
+  //
+  // Kesmek, sesi durdurmak DEĞİL. pause() ne "ended" ne "error"
+  // tetikliyor; yalnızca duraklatılırsa aşağıdaki `await bitti` sonsuza
+  // kadar asılı kalıyor ve eller serbest döngü dinlemeye hiç dönmüyor
+  // (mesgul=true'da kalıyor, kayitBasla() çalışmıyor). Yani kesmek,
+  // sözü de kapatmak zorunda.
+  let sesiBitir = null;
+
+  // Sözünü kesme. Konuşurken yazmaya başlamak J.A.R.V.I.S.'i susturuyor:
+  // ölçülen 250 token'lık bir cevap 3,80 saniye sürüyor ve soruyu yanlış
+  // anladıysa o sürenin tamamını dinlemekten başka yol yoktu.
+  // Bir şey çalmıyorsa sessizce false döner — her tuş vuruşunda
+  // çağrılabilir olması buna bağlı.
+  function sesiKes() {
+    if (!audio) return false;
+    try { audio.pause(); } catch (_) {}
+    const kapat = sesiBitir;
+    sesiBitir = null;
+    audio = null;
+    if (kapat) kapat();
+    return true;
+  }
+
   async function speak(id) {
     // Sesi fetch ile alıyoruz: <audio src> hatayı yalnızca "yüklenemedi" diye
     // bildirir, fetch ise sunucunun asıl mesajını verir. Ayrıca tam veriyi
     // blob olarak çalmak, telefonda akış çalmaktan daha güvenilir.
     try {
-      if (audio) { audio.pause(); audio = null; }
+      // Önceki oynatmayı da düzgün kapat: yalnızca pause() çağırmak, o
+      // oynatmayı bekleyen turu askıda bırakırdı. Bu, proaktif sesli
+      // duyuru eller serbest bir cevabın üstüne bindiğinde gerçekten
+      // oluyordu — duyuru sesi çalıyor, sohbet döngüsü ölüyordu.
+      sesiKes();
 
       const res = await fetch("/speak/" + encodeURIComponent(id));
       if (!res.ok) {
@@ -1840,19 +1882,33 @@
       if (!blob.size) { addNotice("Ses üretilemedi: boş yanıt."); return; }
 
       const url = URL.createObjectURL(blob);
-      audio = new Audio(url);
+      const bu = new Audio(url);
+      audio = bu;
       // Eller serbest sohbet, konuşma BİTTİĞİNDE dinlemeye dönmek zorunda:
       // aksi halde J.A.R.V.I.S. kendi sesini duyup kendine cevap veriyor.
-      // O yüzden bu söz oynatma bitince çözülüyor.
+      // O yüzden bu söz oynatma bitince çözülüyor — kesilerek bittiğinde de.
       const bitti = new Promise((coz) => {
-        audio.onended = () => { URL.revokeObjectURL(url); coz(); };
-        audio.onerror = () => { URL.revokeObjectURL(url); coz(); };
+        // `bu` üzerinden kapanıyor: araya yeni bir oynatma girdiyse
+        // eskinin biten olayı yenisini sıfırlamamalı.
+        const kapat = () => {
+          if (sesiBitir === kapat) sesiBitir = null;
+          if (audio === bu) audio = null;
+          URL.revokeObjectURL(url);
+          coz();
+        };
+        sesiBitir = kapat;
+        bu.onended = kapat;
+        bu.onerror = kapat;
       });
 
       try {
-        await audio.play();
+        await bu.play();
       } catch (_) {
         // Tarayıcı otomatik oynatmayı engelledi; kullanıcı hareketiyle çalsın.
+        // Çalmayan bir sesi "süren oynatma" olarak bırakmıyoruz: bırakılsaydı
+        // sesiKes() hiç başlamamış bir şeyi kesmeye çalışırdı.
+        if (audio === bu) audio = null;
+        sesiBitir = null;
         addPlayButton(url);
         return;
       }

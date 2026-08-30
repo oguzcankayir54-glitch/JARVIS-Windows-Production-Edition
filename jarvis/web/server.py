@@ -229,6 +229,9 @@ class PanelServer:
         self.ocr = ocr if ocr is not None else build_ocr(False)
         self.face_recognizer = face_recognizer if face_recognizer is not None else build_face_recognizer(False)
         self.screenshot = screenshot if screenshot is not None else build_screenshot(False)
+        camera_controller = getattr(agent, "camera_controller", None)
+        if camera_controller is not None:
+            camera_controller.bind(self.vision)
         self.vision_pipeline = vision_pipeline or VisionPipeline(
             faces=self.vision, objects=self.object_vision, ocr=self.ocr,
             identity=self.face_recognizer, screenshot=self.screenshot,

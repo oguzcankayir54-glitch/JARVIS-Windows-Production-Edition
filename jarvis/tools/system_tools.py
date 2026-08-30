@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import platform
 from typing import Any
 
 import psutil
@@ -42,6 +43,27 @@ def get_system_info() -> dict[str, Any]:
         "ram_total_gb": round(vm.total / 1e9, 1),
         "ram_percent": vm.percent,
         "disk_used_percent": du.percent,
+    }
+
+
+def get_system_summary() -> dict[str, Any]:
+    """One grounded CPU/RAM/GPU answer for broad host questions."""
+    system = get_system_info()
+    gpu = get_gpu_temperature()
+    cpu = f"{system['cpu_cores']} çekirdek / {system['cpu_threads']} iş parçacığı"
+    ram = f"{system['ram_total_gb']} GB RAM"
+    gpu_text = (
+        f"{gpu['name']} ({float(gpu['vram_total_mb']) / 1024:g} GB VRAM)"
+        if gpu.get("available") and gpu.get("vram_total_mb") is not None
+        else str(gpu.get("note") or "GPU bilgisi alınamadı")
+    )
+    return {
+        "hostname": platform.node(),
+        "system": system,
+        "gpu": gpu,
+        "user_message": (
+            f"Doğrulanan sistem bilgileri: CPU {cpu}; {ram}; GPU {gpu_text}."
+        ),
     }
 
 
@@ -115,6 +137,10 @@ def register_system_tools(registry: ToolRegistry) -> ToolRegistry:
     registry.register(Tool(
         name="get_system_info", description="Host CPU/RAM/disk özet bilgisini oku.",
         risk=RiskLevel.LOW, func=get_system_info, params=[]))
+    registry.register(Tool(
+        name="get_system_summary",
+        description="CPU, RAM ve GPU bilgilerini tek doğrulanmış sistem özeti olarak oku.",
+        risk=RiskLevel.LOW, func=get_system_summary, params=[]))
     registry.register(Tool(
         name="get_cpu_temperature", description="CPU sıcaklığını (°C) oku.",
         risk=RiskLevel.LOW, func=get_cpu_temperature, params=[]))

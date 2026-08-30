@@ -35,6 +35,11 @@ from .tools.web_tools import register_web_tools
 from .tools.shell_tools import register_shell_tools
 from .tools.system_tools import get_gpu_temperature, get_system_info, register_system_tools
 from .tools.windows_tools import register_windows_tools
+from .tools.desktop_tools import (
+    CameraController,
+    ScreenshotController,
+    register_desktop_tools,
+)
 from .tools.agenda_tools import register_agenda_tools
 from .agenda.store import AgendaStore
 
@@ -146,10 +151,18 @@ def build_agent(
     register_web_tools(registry, build_arama(
         enabled=cfg.web_enabled, brave_key=cfg.brave_api_key))
     register_app_tools(registry, data_dir=str(cfg.data_dir))
+    screenshot_controller = ScreenshotController(enabled=cfg.screenshot_enabled)
+    camera_controller = CameraController(
+        "Kamera kapalı. JARVIS'i --kamera ile başlatın veya "
+        "JARVIS_VISION_ENABLED=true ayarını kullanın."
+    )
+    register_desktop_tools(
+        registry, screenshot=screenshot_controller, camera=camera_controller,
+    )
 
     tools = ToolManager(registry, permissions)
     llm = build_llm(cfg)
-    return Agent(
+    agent = Agent(
         llm=llm, tools=tools, registry=registry, state=StateMachine(),
         max_steps=cfg.max_agent_steps, arac_siniri=cfg.arac_siniri,
         history_max_messages=cfg.history_max_messages,
@@ -162,3 +175,6 @@ def build_agent(
             max_delegations=cfg.multi_agent_max_delegations,
         ),
     )
+    agent.camera_controller = camera_controller
+    agent.screenshot_controller = screenshot_controller
+    return agent

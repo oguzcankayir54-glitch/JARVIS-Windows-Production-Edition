@@ -215,10 +215,23 @@ class Agent:
 
     def _intent_context(self, karar: IntentDecision) -> Message:
         extra = ""
+        if karar.required_tool:
+            extra += (
+                f" Bu turda {karar.required_tool} aracı zorunludur; araç sonucu "
+                "olmadan başarı veya sonuç bildirme."
+            )
+        windows_path = karar.entities.get("windows_user_path")
+        if windows_path:
+            extra += (
+                " Kullanıcının verdiği kesin Windows kullanıcı yolu "
+                f"'{windows_path}'. Bunu remember_fact ile "
+                "key='windows_kullanici_yolu', category='sistem' olarak "
+                "aynen kaydet; bilgisayar adı uydurma."
+            )
         if karar.subtype == "TRAINING_DATA":
-            extra = (" Eğitim modu aktif: kullanıcı kalıcı bir bilgi öğretiyor. "
-                     "Bilgiyi anlamlandır, uygun anahtar/kategoriyle remember_fact kullan; "
-                     "RAG'e gönderme.")
+            extra += (" Eğitim modu aktif: kullanıcı kalıcı bir bilgi öğretiyor. "
+                      "Bilgiyi anlamlandır, uygun anahtar/kategoriyle remember_fact kullan; "
+                      "RAG'e gönderme.")
         return Message(
             role="system",
             content=(
@@ -819,23 +832,23 @@ class Agent:
                     if chunk_callback is not None else None
                 )
                 streamed = False
+                action_stream_buffered = False
                 if stream_call is None:
                     response = self.llm.chat(self.history, tools=schemas)
                 else:
                     pieces: list[str] = []
-                    buffer_unverified_action = (
+                    action_stream_buffered = (
                         self.response_engine.requires_tool_evidence(
                             decision=self.last_intent,
                             offered_tools=offered_tool_names,
                         )
-                        and not turn_trace.tools_used
                     )
                     for piece in stream_call(self.history, tools=schemas):
                         if not piece:
                             continue
                         streamed = True
                         pieces.append(piece)
-                        if not buffer_unverified_action:
+                        if not action_stream_buffered:
                             chunk_callback(piece)
                     response = getattr(self.llm, "son_yanit", None)
                     if not isinstance(response, LLMResponse):
@@ -895,6 +908,11 @@ class Agent:
                     tools_used=turn_trace.tools_used,
                     debug=self.debug_mode,
                 )
+                cevap = self.response_engine.ground_verified_tool_result(
+                    cevap,
+                    decision=self.last_intent,
+                    outcomes=tool_outcomes,
+                )
                 unresolved = [
                     getattr(result, "error", "")
                     for result in tool_outcomes.values()
@@ -906,8 +924,7 @@ class Agent:
                 # A guarded action stream is buffered until tool evidence is
                 # known, so its invented prose must never have reached the
                 # caller even when the provider did stream it.
-                action_was_buffered = missing_tool_call and not turn_trace.tools_used
-                if chunk_callback is not None and (not streamed or action_was_buffered):
+                if chunk_callback is not None and (not streamed or action_stream_buffered):
                     chunk_callback(cevap)
                 self.history.append(Message(role="assistant", content=cevap))
                 self.durum = bekleyen_soruyu_yakala(self.durum, cevap)
@@ -921,6 +938,17 @@ class Agent:
 
             clear_missing_tool_warning()
             tool_rounds += 1
+            windows_path = self.last_intent.entities.get("windows_user_path")
+            if windows_path:
+                for call in response.tool_calls:
+                    if call.name == "remember_fact":
+                        call.arguments = {
+                            **call.arguments,
+                            "key": "windows_kullanici_yolu",
+                            "value": windows_path,
+                            "category": "sistem",
+                            "cikarim": False,
+                        }
             # Ollama'nın tool protokolünde araç sonucundan önce, aracı isteyen
             # assistant mesajı da sonraki isteğe geri gönderilmelidir. Yalnız
             # tool sonucunu eklemek küçük modellerde "bu sonuç neden geldi?"

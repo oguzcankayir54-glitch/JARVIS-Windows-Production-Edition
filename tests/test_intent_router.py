@@ -81,6 +81,42 @@ def test_computer_control_contract_exposes_required_tool_and_risk():
     assert got.reasoning_level == 2
 
 
+@pytest.mark.parametrize("text, expected_intent, expected_tool", [
+    ("Jarvis windows sistemim şuan eksik update var mı",
+     Intent.SYSTEM_MONITOR, "windows_update_status"),
+    ("Jarvis masaüstümde neler var?",
+     Intent.COMPUTER_CONTROL, "masaustu_listele"),
+    ("ekran görüntüsü al ve o görüntüyü direkt aç",
+     Intent.COMPUTER_CONTROL, "ekran_goruntusu_al_ac"),
+    ("ekran görüntüsü nerede jarvis",
+     Intent.COMPUTER_CONTROL, "son_ekran_goruntusu"),
+    ("jarvis şuan bu sistem hakkında ne biliyorsun?",
+     Intent.SYSTEM_MONITOR, "get_system_summary"),
+    ("jarvi kamera özelliğini aktif et",
+     Intent.COMPUTER_CONTROL, "kamera_kontrol"),
+])
+def test_reported_hallucination_prompts_require_the_exact_capability(
+    text, expected_intent, expected_tool,
+):
+    got = IntentRouter().route(text)
+
+    assert got.intent is expected_intent
+    assert got.confidence == 0.99
+    assert got.requires_tool is True
+    assert got.required_tool == expected_tool
+
+
+def test_explicit_windows_user_path_is_canonicalized_for_memory():
+    got = IntentRouter().route(
+        "Jarvis bu bilgisayarın ismi bu şeklde bunu kaydet "
+        "Users\\Administrator\\"
+    )
+
+    assert got.intent is Intent.MEMORY_SAVE
+    assert got.required_tool == "remember_fact"
+    assert got.entities["windows_user_path"] == r"C:\Users\Administrator"
+
+
 def test_speech_metadata_survives_intent_routing():
     got = IntentRouter().route(
         "Görev yöneticisini aç", original_text="Görev yerini sınaç",

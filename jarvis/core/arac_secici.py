@@ -40,7 +40,8 @@ ANAHTARLAR: dict[str, tuple[str, ...]] = {
     "sistem": ("sicakli", "isin", "derece", "ram", "bellek", "disk", "ssd",
                "hdd", "smart", "islemci", "cpu", "gpu", "ekran kart", "sistem",
                "durum", "performans", "kullani", "donanim", "makine",
-               "bilgisayar", "fan", "guc", "gucu", "sogu", "hiz", "yavas", "dolu"),
+               "bilgisayar", "fan", "guc", "gucu", "sogu", "hiz", "yavas", "dolu",
+               "update", "guncelle"),
     "hafiza": ("hatirla", "unutma", "not al", "kaydet", "hafiza", "biliyor",
                "soylemistim", "tercih", "unut", "aklinda"),
     "dosya": ("dosya", "klasor", "dizin", "oku", "yaz", "listele", "kaydet",
@@ -57,13 +58,15 @@ ANAHTARLAR: dict[str, tuple[str, ...]] = {
     # silently drop a newly added capability.
     "git": ("git", "github", "commit", "branch", "dal", "remote", "diff"),
     "uygulama": ("ac", "baslat", "calistir", "youtube", "tarayici", "program",
-                 "uygulama", "ayarlar", "not defteri", "hesap makinesi"),
+                 "uygulama", "ayarlar", "not defteri", "hesap makinesi",
+                 "masaustu", "ekran goruntusu", "screenshot", "kamera"),
     "ajanda": ("ajanda", "gorev", "randevu", "teslim", "hatirlat", "yapilacak"),
 }
 
 #: Araç adı → kategori. Kayıt defterindeki adlarla birebir.
 KATEGORILER: dict[str, str] = {
     "get_system_info": "sistem",
+    "get_system_summary": "sistem",
     "get_cpu_temperature": "sistem",
     "get_gpu_temperature": "sistem",
     "get_ram_usage": "sistem",
@@ -72,6 +75,7 @@ KATEGORILER: dict[str, str] = {
     "windows_process": "sistem",
     "windows_network": "sistem",
     "windows_service": "sistem",
+    "windows_update_status": "sistem",
     "windows_window": "uygulama",
     "windows_audio": "uygulama",
     "windows_power": "sistem",
@@ -104,6 +108,10 @@ KATEGORILER: dict[str, str] = {
     "arama_ac": "uygulama",
     "uygulama_ac": "uygulama",
     "uygulama_listesi": "uygulama",
+    "masaustu_listele": "uygulama",
+    "ekran_goruntusu_al_ac": "uygulama",
+    "son_ekran_goruntusu": "uygulama",
+    "kamera_kontrol": "uygulama",
     "ajanda_ekle": "ajanda",
     "ajanda_listele": "ajanda",
     "ajanda_durum": "ajanda",
@@ -222,7 +230,7 @@ def araclari_sec(semalar: list[dict], metin: str,
 
 _ARA_CUMLELER = frozenset({
     "peki", "evet", "tamam", "tamam devam et", "devam et", "anladim",
-    "hı hı", "hi hi", "aynen", "olur",
+    "hı hı", "hi hi", "aynen", "olur", "sonuclari goster", "sonucu goster",
 })
 
 

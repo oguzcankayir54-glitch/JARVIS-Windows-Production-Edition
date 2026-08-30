@@ -288,6 +288,29 @@ class ResponseEngine:
             "için başarıyı doğrulayamıyorum."
         )
 
+    def ground_verified_tool_result(self, text: str, *, decision: IntentDecision,
+                                    outcomes: dict[str, object]) -> str:
+        """Let a verified tool-authored message outrank model narration.
+
+        Only an explicit ``user_message`` from the exact required tool is
+        trusted.  Arbitrary model prose and unrelated tool results cannot use
+        this path, and failed/unverified calls remain owned by
+        :meth:`ground_tool_failures`.
+        """
+        required = decision.required_tool
+        result = outcomes.get(required or "")
+        if not required or result is None:
+            return text
+        if not getattr(result, "ok", False) or getattr(result, "verified", None) is not True:
+            return text
+        data = getattr(result, "data", None)
+        if not isinstance(data, dict):
+            return text
+        message = data.get("user_message")
+        if not isinstance(message, str) or not message.strip():
+            return text
+        return self.redact_secrets(message.strip())
+
     def error(self, exc: BaseException, *, debug: bool = False) -> str:
         if debug:
             detail = self.redact_secrets(str(exc).strip() or exc.__class__.__name__)

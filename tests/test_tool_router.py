@@ -10,6 +10,8 @@ ALL = [_schema(n) for n in (
     "get_system_info", "get_ram_usage", "remember_fact", "recall_facts",
     "bilgi_ara", "bilgi_durum", "read_file", "list_directory", "write_file",
     "run_terminal_command", "web_ara", "web_oku", "uygulama_ac",
+    "get_system_summary", "windows_update_status", "masaustu_listele",
+    "ekran_goruntusu_al_ac", "son_ekran_goruntusu", "kamera_kontrol",
 )]
 
 
@@ -51,3 +53,14 @@ def test_github_does_not_fall_back_to_arbitrary_shell():
     got = ToolRouter().select(
         ALL, IntentDecision(Intent.GITHUB, .9), "GitHub son commit'e bak")
     assert got == []
+
+
+def test_required_tool_survives_a_tight_schema_limit():
+    decision = IntentDecision(
+        Intent.SYSTEM_MONITOR, .99, requires_tool=True,
+        tool="windows_update_status",
+    )
+
+    got = ToolRouter().select(ALL, decision, "eksik update var mı", limit=1)
+
+    assert names(got) == {"windows_update_status"}

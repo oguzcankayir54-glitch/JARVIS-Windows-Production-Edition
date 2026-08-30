@@ -39,6 +39,12 @@ def register_memory_tools(registry: ToolRegistry, store: MemoryStore) -> ToolReg
             )
         elif onceki and onceki[0].value != value:
             cevap["onceki_deger"] = onceki[0].value
+        if key == "windows_kullanici_yolu":
+            cevap["user_message"] = (
+                f"Windows kullanıcı yolunu aynen kaydettim: {fact.value}"
+                if yazildi else
+                f"Windows kullanıcı yolu değiştirilmedi; kayıtlı değer: {fact.value}"
+            )
         return cevap
 
     def recall_facts(query: str = "", category: str = "") -> dict[str, Any]:

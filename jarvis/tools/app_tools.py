@@ -47,7 +47,8 @@ def register_app_tools(registry: ToolRegistry, data_dir: str = "~/.jarvis") -> T
         # containing an error-shaped payload and may still claim it opened.
         acilan = uygulamayi_ac(uygulama)
         return {"acildi": True, "uygulama": uygulama.ad,
-                "tur": uygulama.tur, "hedef": acilan}
+                "tur": uygulama.tur, "hedef": acilan,
+                "user_message": f"{uygulama.ad} açıldı."}
 
     def uygulama_listesi(filtre: str = "") -> dict[str, Any]:
         liste = katalog(data_dir)
